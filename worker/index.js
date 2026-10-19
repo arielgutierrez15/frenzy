@@ -7,12 +7,16 @@
  *  - Validates every query string (names and values), caps request/response sizes and keeps a per-provider upstream budget,
  *    so one visitor cannot burn your Jupiter / CoinGecko / RPC quota.
  *  - Caches answers at the edge and de-duplicates upstream calls, so many visitors share one provider budget.
- *  - Only forwards an allowlist of read-only paths. It is not an open proxy and it never signs or sends transactions
- *    (the only POSTs are Jupiter /swap/v2/execute with an already-signed transaction, and four read-only RPC methods).
+ *  - Only forwards an allowlist of read-only paths. It is not an open proxy and it never signs transactions. The /p/ routes
+ *    send nothing on-chain (the only POST is four read-only RPC methods). Real swaps go through /v1/swap (api.js), which
+ *    builds them with the BAGZ fee and only relays a transaction the wallet signed unchanged.
  *
  * Routes:  GET /health   ·   GET|POST /p/<provider>/<path…>   with provider in jup | gt | ds | pump | rug | rpc
+ *          GET|POST /v1/…   swaps with the BAGZ fee, BOOST listings, admin review (see api.js; needs the D1 binding "Db")
  */
-const VERSION = '1.1.0';
+import { api, ApiError, publicConfig } from './api.js';
+
+const VERSION = '1.2.0';
 const B58 = '[1-9A-HJ-NP-Za-km-z]{32,44}';
 const ADDR = '[A-Za-z0-9]{20,64}';
 const DIG = /^\d{1,6}$/;
@@ -29,7 +33,6 @@ const PROVIDERS = {
       { re: /^\/tokens\/v2\/(recent|toptrending\/\w+|toporganicscore\/\w+|toptraded\/\w+|search|tag|category\/\w+\/\w+)$/, ttl: 30, q: { query: /^[\w.,:\-]{1,200}$/, limit: DIG } },
       { re: /^\/price\/v3$/, ttl: 15, q: { ids: MINTS } },
       { re: /^\/swap\/v2\/order$/, ttl: 0, q: { inputMint: MINT, outputMint: MINT, amount: AMOUNT, taker: MINT, slippageBps: /^\d{1,5}$/ }, need: ['inputMint', 'outputMint', 'amount'] },
-      { re: /^\/swap\/v2\/execute$/, ttl: 0, method: 'POST', q: {}, exec: true },
     ],
   },
   gt: {
@@ -63,7 +66,7 @@ const PROVIDERS = {
     allow: [{ re: new RegExp(`^/v1/tokens/${B58}/report/summary$`), ttl: 300 }],
   },
   rpc: {
-    base: (env) => env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+    base: (env) => env.SOLANA_RPC_URL || (env.HELIUS_API_KEY ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(env.HELIUS_API_KEY)}` : 'https://api.mainnet-beta.solana.com'),
     allow: [{ re: /^$/, ttl: 60, method: 'POST', q: {}, rpc: ['getTokenLargestAccounts', 'getTokenSupply', 'getLatestBlockhash', 'getSignatureStatuses'] }],
   },
 };
@@ -81,7 +84,7 @@ function over(bucket, max, windowMs = 60_000, now = Date.now()) {
 const num = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d; };
 /** upstream calls per minute this Worker instance may make to each provider (cache hits do not count) */
 function budget(id, env) {
-  const d = { jup: 50, gt: env.COINGECKO_API_KEY ? 80 : 8, ds: 240, pump: 30, rug: 30, rpc: 100 };
+  const d = { jup: 50, gt: env.COINGECKO_API_KEY ? 80 : 8, ds: 240, pump: 30, rug: 30, rpc: 300 };
   return num(env[`UPSTREAM_PER_MIN_${id.toUpperCase()}`], d[id]);
 }
 
@@ -158,7 +161,7 @@ export async function handle(request, env, ctx, deps = {}) {
   const base = {
     ...(good ? { 'access-control-allow-origin': origin, vary: 'Origin' } : {}),
     'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-headers': 'content-type, authorization',
     'access-control-max-age': '600',
     'access-control-expose-headers': 'x-bagz-cache, x-bagz-upstream-status, x-bagz-limit, retry-after',
     'x-content-type-options': 'nosniff',
@@ -166,7 +169,26 @@ export async function handle(request, env, ctx, deps = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: good ? 204 : 403, headers: base });
 
   if (url.pathname === '/health') {
-    return json({ ok: true, version: VERSION, providers: Object.keys(PROVIDERS), keys: { jupiter: !!env.JUPITER_API_KEY, coingecko: !!env.COINGECKO_API_KEY, rpc: !!env.SOLANA_RPC_URL }, protection: { origins: allowedOrigins(env).length, rateLimiter: !!env.RATE_LIMITER, probeToken: !!env.PROBE_TOKEN } }, 200, base);
+    const c = publicConfig(env);
+    return json({ ok: true, version: VERSION, providers: Object.keys(PROVIDERS), keys: { jupiter: !!env.JUPITER_API_KEY, coingecko: !!env.COINGECKO_API_KEY, rpc: !!(env.SOLANA_RPC_URL || env.HELIUS_API_KEY) }, protection: { origins: allowedOrigins(env).length, rateLimiter: !!env.RATE_LIMITER, probeToken: !!env.PROBE_TOKEN }, features: { liveSwaps: c.liveSwaps, liveBoostPayments: c.liveBoostPayments, feeBps: c.feeBps, database: c.database } }, 200, base);
+  }
+  if (url.pathname.startsWith('/v1/')) {
+    if (!good && !probeOk) return json({ error: 'This API only serves the BAGZ web app' }, 403, base);
+    const ip = request.headers.get('cf-connecting-ip') || 'anon';
+    let limited = false;
+    if (env.RATE_LIMITER) { try { limited = !(await env.RATE_LIMITER.limit({ key: ip })).success; } catch { /* fall through */ } }
+    if (!limited) limited = over(`ip:${ip}`, num(env.RATE_PER_MIN, 240), 60_000, now) || (request.method === 'POST' && over(`post:${ip}`, num(env.RATE_POST_PER_MIN, 20), 60_000, now));
+    if (limited) return json({ error: 'Too many requests' }, 429, { ...base, 'retry-after': '30', 'x-bagz-limit': 'client' });
+    if (request.method !== 'GET' && request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, base);
+    try {
+      const out = await api(request, env, { fetch: doFetch, now: () => (deps.now ? deps.now() : Date.now()), guard: (id) => over(`up:${id}`, budget(id, env), 60_000, deps.now ? deps.now() : Date.now()) });
+      return json(out, 200, base);
+    } catch (e) {
+      if (e instanceof ApiError) return json({ error: e.message, ...(e.extra || {}) }, e.status, e.status === 429 ? { ...base, 'retry-after': String((e.extra && e.extra.retryAfter) || 20) } : base);
+      // never leak internals (RPC URLs carry keys)
+      console.error('api error', e && e.message ? String(e.message).replace(/api-key=[^&\s]+/g, 'api-key=…') : e);
+      return json({ error: 'Internal error' }, 500, base);
+    }
   }
   const m = /^\/p\/([a-z]+)(\/.*)?$/.exec(url.pathname);
   const id = m && Object.prototype.hasOwnProperty.call(PROVIDERS, m[1]) ? m[1] : null;

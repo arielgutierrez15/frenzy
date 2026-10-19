@@ -76,3 +76,26 @@ export async function signTransactionB64(c: Connected, txB64: string): Promise<s
     throw new WalletError(/reject|denied|cancel/i.test(msg) ? 'You declined the signature' : `Signing failed: ${msg}`, /reject|denied|cancel/i.test(msg) ? 'rejected' : 'failed');
   }
 }
+
+/** Asks the wallet to sign a plain-text message (used only for admin sign-in; it cannot move funds). Returns base64. */
+export async function signMessageText(c: Connected, text: string): Promise<string> {
+  const f = c.wallet.features['solana:signMessage'];
+  if (!f) throw new WalletError('This wallet cannot sign messages', 'unsupported');
+  try {
+    const out = await f.signMessage({ account: c.account, message: new TextEncoder().encode(text) });
+    const sig: Uint8Array | undefined = out?.[0]?.signature;
+    if (!(sig instanceof Uint8Array) || sig.length !== 64) throw new WalletError('The wallet returned no signature', 'failed');
+    return bytesToB64(sig);
+  } catch (e: any) {
+    if (e instanceof WalletError) throw e;
+    const msg = String(e?.message || e);
+    throw new WalletError(/reject|denied|cancel/i.test(msg) ? 'You declined the signature' : `Signing failed: ${msg}`, /reject|denied|cancel/i.test(msg) ? 'rejected' : 'failed');
+  }
+}
+
+/** Wallet Standard change events (account switched or disconnected inside the wallet). Returns an unsubscribe. */
+export function onWalletChange(w: StdWallet, fn: (accounts: readonly WalletAccount[] | undefined) => void): () => void {
+  const ev = w.features['standard:events'];
+  if (!ev || typeof ev.on !== 'function') return () => {};
+  try { return ev.on('change', (p: { accounts?: readonly WalletAccount[] }) => { if (p && 'accounts' in p) fn(p.accounts); }) || (() => {}); } catch { return () => {}; }
+}

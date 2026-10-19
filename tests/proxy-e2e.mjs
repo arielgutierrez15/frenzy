@@ -126,20 +126,27 @@ const mainSeries = (p) => p.evaluate(() => { const c = window.__lwc.charts.filte
   check('…and every one of them passed the Worker’s query validation', ohlcv.every((l) => l.status === 200), ohlcv.filter((l) => l.status !== 200).map((l) => l.status + ' ' + l.path).join(' | '));
   check('chart still shows data after the walk', (await mainSeries(p))?.n > 5);
 
-  // wallet + Jupiter quote through the Worker
-  await p.locator('.live-swap button', { hasText: /Connect TestWallet/ }).click();
-  await until(async () => /7xKX…gAsU/.test(await p.locator('.live-swap').innerText()), 5000);
+  // before a wallet connects: Jupiter /order preview through the Worker
   await p.locator('.live-swap input[aria-label="Swap amount"]').fill('0.5');
   const quoted = await until(async () => /you receive/i.test(await p.locator('.live-swap').innerText()), 10000);
-  check('Jupiter quote travels app → Worker → (mock) Jupiter and renders', quoted);
+  check('Jupiter preview quote travels app → Worker → (mock) Jupiter and renders', quoted);
   const order = w.log.find((l) => /swap\/v2\/order/.test(l.path));
-  check('the order request passed validation (200)', order?.status === 200, JSON.stringify(order));
+  check('the preview order request passed validation (200)', order?.status === 200, JSON.stringify(order));
+  // after connecting: the app asks the BAGZ API for the exact fee-carrying quote. This Worker has no fee accounts
+  // configured, so the server must refuse and the app must say why, with the swap button disabled.
+  await p.locator('.live-swap button', { hasText: /Connect TestWallet/ }).click();
+  await until(async () => /7xKX…gAsU/.test(await p.locator('.live-swap').innerText()), 5000);
+  const refused = await until(async () => /fee account is not configured/i.test(await p.locator('.live-swap').innerText()), 10000);
+  const prep = w.log.find((l) => l.path === '/v1/swap/prepare');
+  check('connected wallet → /v1/swap/prepare; without fee accounts the server refuses (503) and the app shows why', refused && prep?.status === 503, JSON.stringify(prep));
+  check('/v1/config answered the app (200)', w.log.some((l) => l.path === '/v1/config' && l.status === 200));
   check('swap button stays disabled and the wallet was never asked to sign', (await p.locator('.live-swap .btn-accent').isDisabled()) && (await p.evaluate(() => window.__signed || 0)) === 0);
 
   // the full contract: nothing the app sent was refused
+  // (the deliberate 503 from /v1/swap/prepare above is a configuration refusal, not a contract violation)
   const bad = w.log.filter((l) => l.method !== 'OPTIONS' && l.status >= 400);
   check('contract: no app request was rejected by the Worker (no 400/403/405)', bad.filter((l) => [400, 403, 405].includes(l.status)).length === 0, bad.map((l) => l.status + ' ' + l.path).join(' | '));
-  check('every Worker route the app used is one of the allowlisted providers', w.log.every((l) => /^\/(p\/(jup|gt|ds|pump|rug|rpc)\/|health)/.test(l.path)));
+  check('every Worker route the app used is an allowlisted provider or the BAGZ API', w.log.every((l) => /^\/(p\/(jup|gt|ds|pump|rug|rpc)\/|health|v1\/(config|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)), [...new Set(w.log.map((l) => l.path.split('?')[0]))].filter((x) => !/^\/p\//.test(x)).join(' '));
 
   // secrets
   check('secret key reached the upstream providers (injected server-side)', w.upstream.some((u) => u.key === SECRET));

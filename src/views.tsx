@@ -19,6 +19,9 @@ import { ChartPanel } from './chart/ChartPanel';
 import { HealthPanel } from './Health';
 import { LiveSwap } from './trading/LiveSwap';
 import { proxyBase } from './providers/config';
+import { SponsoredStrip } from './boost/Sponsored';
+import { setPromoteMint } from './boost/PromoteView';
+import { ConnectedWalletPanel } from './trading/ConnectedWallet';
 
 // ======================================================================
 // shared bits
@@ -488,6 +491,7 @@ export function CoinView({ id }: { id: string }) {
             </div>
           )}
           <LiveSwap c={c} />
+          {c.chain === 'solana' && <button className="link small promo-link" onClick={() => { setPromoteMint(c.address); nav.go('promote'); }}>Promote ${c.symbol} with BAGZ Boost</button>}
           <div className="panel">
             <h2>Trade or check it elsewhere</h2>
             <div className="ext-links">
@@ -690,6 +694,8 @@ export function WalletView() {
         </div>
       </div>
 
+      <ConnectedWalletPanel />
+
       {topFum && topFum.missed > 1 && topFum.mult >= 1.05 && (
         <div className="panel fumble">
           <div className="fumble-l">
@@ -886,6 +892,7 @@ export function HomeView() {
       </header>
       <DataGate>
         <div className="stack gap">
+          <SponsoredStrip />
           <section className="home-sec">
             <div className="row"><h2>Biggest movers · 1h</h2><span className="grow" /><button className="link small" onClick={() => nav.go('radar')}>Gem Radar</button></div>
             {movers.length ? <div className="movers">{movers.map((c) => <MoverTile key={c.id} c={c} />)}</div> : <p className="muted small">Movers appear once prices load.</p>}
@@ -954,6 +961,10 @@ export function HomeView() {
                 {!tape.length && <li className="muted small">{st.snapshotAt ? 'Swaps need live data.' : 'The first real swaps arrive within a minute.'}</li>}
               </ul>
             </section>
+          </div>
+          <div className="panel promo-cta row gap-s wrap">
+            <span className="stack grow"><b>Launching something?</b><span className="muted small">Put your token in the Sponsored row. Labelled as paid, reviewed by BAGZ, paid in USDC.</span></span>
+            <button className="btn btn-soft btn-sm" onClick={() => { setPromoteMint(''); nav.go('promote'); }}>Promote a token</button>
           </div>
           <HealthPanel />
         </div>

@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { Side } from './types';
 
-export type Tab = 'home' | 'feed' | 'radar' | 'wallet' | 'leaders';
+export type Tab = 'home' | 'feed' | 'radar' | 'wallet' | 'leaders' | 'promote' | 'admin';
 export interface Route { tab: Tab; coin?: string; trader?: string }
 export interface TradeIntent { coinId: string; side: Side; usd?: number; via?: string }
 

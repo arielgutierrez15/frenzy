@@ -1,5 +1,6 @@
 // Single-file build: bundles the app with esbuild and inlines JS + CSS into one HTML page.
 // Usage: node build.mjs            -> dist/bagz.html (standalone, double-click to open) + docs/index.html (GitHub Pages)
+//        BAGZ_PAGE_OUT=/tmp/x.html node build.mjs   -> writes only that page (tests build variants without touching docs/)
 import { build } from 'esbuild';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 const b64 = (f) => 'data:image/png;base64,' + readFileSync(f).toString('base64');
@@ -16,6 +17,11 @@ const css = r.outputFiles.find((f) => f.path.endsWith('.css')).text;
 const fonts = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&display=swap">';
 const head = `<title>BAGZ</title>\n<meta name="theme-color" content="#090909">\n<link rel="icon" type="image/png" href="${b64('public/favicon.png')}">\n<link rel="apple-touch-icon" href="${b64('public/apple-touch-icon.png')}">\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="Live memecoin charts, a Gem Radar for new launches and a paper-trading desk.">\n${fonts}\n<style>${css}</style>`;
 const bodyHtml = `<div id="root"></div>\n<script>${js.replace(/<\/script/g, '<\\/script')}</script>`;
+if (process.env.BAGZ_PAGE_OUT) {
+  writeFileSync(process.env.BAGZ_PAGE_OUT, `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${head}</head><body>${bodyHtml}</body></html>\n`);
+  console.log('wrote', process.env.BAGZ_PAGE_OUT);
+  process.exit(0);
+}
 mkdirSync('dist', { recursive: true });
 // artifact body (the host wraps it in a document skeleton)
 writeFileSync('dist/artifact.html', `${head}\n${bodyHtml}\n`);
