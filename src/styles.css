@@ -110,7 +110,7 @@ p { margin: 0; }
 
 .view { display: flex; flex-direction: column; gap: 16px; max-width: 760px; margin: 0 auto; }
 .coin-view { max-width: 980px; }
-.view-head { display: flex; align-items: flex-start; gap: 16px; padding-right: 150px; }
+.view-head { display: flex; align-items: flex-start; gap: 16px; padding-right: 230px; }
 .view-head > div { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
 .view-head p { max-width: 62ch; }
 

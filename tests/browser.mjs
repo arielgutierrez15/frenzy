@@ -52,7 +52,12 @@ async function newPage({ viewport = { width: 1280, height: 900 }, mock, lwc = tr
   if (lwc) await p.addInitScript(FAKE_LWC);
   if (wallet) await p.addInitScript(FAKE_WALLET);
   if (storage) await p.addInitScript((s) => { for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, storage);
-  await p.route('**/*', (r) => (r.request().url().startsWith('file:') ? r.continue() : mock.route(r)));
+  await p.route('**/*', (r) => {
+    const url = r.request().url();
+    // "no chart library" also means the vendored copy in docs/vendor/ is missing
+    if (!lwc && url.startsWith('file:') && url.includes('/vendor/lightweight-charts')) return r.abort();
+    return url.startsWith('file:') ? r.continue() : mock.route(r);
+  });
   p.on('pageerror', (e) => pageErrors.push('PAGEERROR ' + e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/net::|Failed to load resource|CORS|Access-Control/.test(m.text())) pageErrors.push('console.error ' + m.text()); });
   await p.goto(APP);

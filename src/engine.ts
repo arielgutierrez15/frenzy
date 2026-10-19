@@ -586,6 +586,7 @@ export function userTrade(st: State, coinId: string, side: Side, amount: number,
     u.positions[coinId] = pos;
     const tr: Trade = { id: uid('x'), t: now, side, coinId, symbol: c.symbol, qty: q.qty, price: q.execPrice, usd: amount, fee: q.fee, via: opts.via || 'market' };
     u.trades.unshift(tr);
+    if (u.trades.length > 300) u.trades.length = 300;
     return { ok: true, message: `Bought ${fmtQty(q.qty)} $${c.symbol} at ${fmtPrice(q.execPrice)}`, trade: tr };
   }
   const pos = u.positions[coinId];
@@ -615,6 +616,7 @@ export function placeOrder(st: State, o: Omit<Order, 'id' | 'createdAt'>): Trade
   if (!(o.trigger > 0)) return { ok: false, message: 'Enter a trigger price above zero.' };
   if (o.side === 'BUY') {
     if (!o.usd || o.usd < 1) return { ok: false, message: 'Enter how much to spend.' };
+    if (o.usd > st.user.cash + 1e-9) return { ok: false, message: `You have ${fmtUsd(st.user.cash)} cash. Lower the amount or add paper cash in Wallet.` };
     if (o.trigger >= c.price) return { ok: false, message: `A limit buy has to sit below the current price (${fmtPrice(c.price)}). Use Market to buy now.` };
   } else {
     if (!st.user.positions[o.coinId]) return { ok: false, message: `You don’t hold any $${c.symbol} to sell.` };

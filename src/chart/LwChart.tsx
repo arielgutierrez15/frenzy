@@ -43,6 +43,8 @@ export function LwChart(props: LwChartProps) {
   const [lib, setLib] = useState<LwcModule | null | 'loading'>('loading');
   const [hover, setHover] = useState<Hover | null>(null);
   const [seriesVer, setSeriesVer] = useState(0);
+  // live.current changes inside effects; bump this so the legend re-renders with the candles the chart now shows
+  const [, setLiveVer] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<Chart | null>(null);
   const main = useRef<Series | null>(null);
@@ -149,21 +151,24 @@ export function LwChart(props: LwChartProps) {
     lines.current = [];
     if (entry && entry > 0) lines.current.push(s.createPriceLine({ price: unit(entry), color: css('--accent-fg', '#ff4fae'), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Entry' }));
     const key = `${dataKey}|${showMcap ? 'm' : 'p'}`;
-    if (lastKey.current !== key) { lastKey.current = key; ch.timeScale().fitContent(); }
+    if (lastKey.current !== key) { lastKey.current = key; ch.timeScale().fitContent(); setHover(null); }
+    setLiveVer((v) => v + 1);
   }, [seriesVer, candles, dataKey, entry, scale]);
 
   // ---- live tick: update the newest candle with a real recent price ------
+  // builds on live.current (reset to the fetched candles by the data effect), so earlier ticks' highs/lows are kept
   useEffect(() => {
     const s = main.current;
-    if (!s || !candles.length) return;
-    const r = applyLiveTick(candles, tick, intervalMs, Date.now());
+    if (!s || !live.current.length) return;
+    const r = applyLiveTick(live.current, tick, intervalMs, Date.now());
     if (!r.changed) return;
     live.current = r.candles;
     const k = r.candles[r.candles.length - 1];
     byTime.current.set(k.t, k);
     s.update(point(k));
     vol.current?.update(volPoint(k));
-  }, [tick?.price, tick?.at, candles, intervalMs]);
+    setLiveVer((v) => v + 1);
+  }, [seriesVer, tick?.price, tick?.at, candles, intervalMs]);
 
   const last = live.current[live.current.length - 1];
   const shown = hover ?? last;
