@@ -18,6 +18,7 @@ import { tradeLinks, walletLink } from './seed';
 import { ChartPanel } from './chart/ChartPanel';
 import { HealthPanel } from './Health';
 import { LiveSwap } from './trading/LiveSwap';
+import { proxyBase } from './providers/config';
 
 // ======================================================================
 // shared bits
@@ -69,7 +70,7 @@ function DataGate({ children }: { children: React.ReactNode }) {
     <>
       <div className="banner banner-warn small" role="status">
         <Icon.warn size={16} />
-        <span>Live requests are blocked here, so this is a real snapshot from Jupiter, pump.fun and DexScreener taken {new Date(st.snapshotAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. Prices are frozen and trading is off. Open bagz.html in a browser or run npm run dev for live data.</span>
+        <span>{proxyBase() ? 'The BAGZ proxy can’t be reached right now' : 'No live data source answered from this page'}, so this is a real snapshot from Jupiter, pump.fun and DexScreener taken {new Date(st.snapshotAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. Prices are frozen and trading is off. Live data replaces it as soon as a source answers.</span>
       </div>
       {children}
     </>

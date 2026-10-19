@@ -104,6 +104,7 @@ export function ChartPanel({ c, entry, isMajor }: { c: Coin; entry?: number; isM
       {set?.partial && <p className="chart-note small muted">This pool is younger than {range}, so the chart shows all history that exists. Intervals with no trades have no candle.</p>}
       {set && gap > 0.03 && <p className="chart-note small warn">Chart pool price ({fmtPrice(lastClose)}) differs from the quoted price ({fmtPrice(c.price)}) by {(gap * 100).toFixed(1)}%. They come from different pools or moments.</p>}
       {set && set.dropped > 0 && <p className="chart-note small muted">{set.dropped} malformed candle{set.dropped > 1 ? 's were' : ' was'} dropped from the provider response.</p>}
+      {set && !set.baseVerified && <p className="chart-note small muted">GeckoTerminal did not confirm which token these candles are priced in.</p>}
       {set && set.suspicious > 0 && <p className="chart-note small warn">{set.suspicious} candle{set.suspicious > 1 ? 's have' : ' has'} an extreme wick (&gt;40×). It may be a bad print on a thin pool.</p>}
     </div>
   );

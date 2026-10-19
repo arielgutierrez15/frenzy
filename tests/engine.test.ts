@@ -105,6 +105,63 @@ test('candles: requested per pool/range/interval, validated, and never shared ac
   assert.equal(r2.ok && r2.set.partial, true, 'a 2-candle history is flagged as partial for 30D');
 });
 
+const OTHER = 'So11111111111111111111111111111111111111112';
+const ohlcvBody = (meta?: object) => ({ data: { attributes: { ohlcv_list: [[Math.floor(Date.now() / 1000) - 120, 0.00008, 0.000085, 0.000079, 0.000083, 900], [Math.floor(Date.now() / 1000) - 60, 0.000083, 0.000084, 0.000081, 0.000082, 400]] } }, ...(meta ? { meta } : {}) });
+
+test('compatibility: candles are refused when GeckoTerminal says the pool is priced in another token', async () => {
+  harness(route({ '/ohlcv/': () => jsonRes(ohlcvBody({ base: { address: OTHER }, quote: { address: MINT } })) }), { autoAdvance: true });
+  __clearCandles();
+  const st = freshState();
+  await discover(st); await refreshPrices(st);
+  const c = st.coins[keyOf('solana', MINT)];
+  const r = await loadCandleSet(st, c, '1H', '1m');
+  assert.equal(r.ok, false);
+  assert.match(!r.ok ? r.error : '', /priced in another token/);
+});
+
+test('compatibility: matching meta.base is marked verified, missing meta is marked unverified (and still shown)', async () => {
+  harness(route({ '/ohlcv/': () => jsonRes(ohlcvBody({ base: { address: MINT }, quote: { address: OTHER } })) }), { autoAdvance: true });
+  __clearCandles();
+  let st = freshState();
+  await discover(st); await refreshPrices(st);
+  const ok = await loadCandleSet(st, st.coins[keyOf('solana', MINT)], '1H', '1m');
+  assert.ok(ok.ok && ok.set.baseVerified);
+  harness(route({ '/ohlcv/': () => jsonRes(ohlcvBody()) }), { autoAdvance: true });
+  __clearCandles();
+  st = freshState();
+  await discover(st); await refreshPrices(st);
+  const un = await loadCandleSet(st, st.coins[keyOf('solana', MINT)], '4H', '5m');
+  assert.ok(un.ok && !un.set.baseVerified);
+});
+
+test('compatibility: a pool lookup only accepts pools where the token is the BASE; quote-side pools give no chart', async () => {
+  const pool = (addr: string, base: string) => ({ id: `solana_${addr}`, attributes: { address: addr }, relationships: { base_token: { data: { id: `solana_${base}` } }, dex: { data: { id: 'raydium' } } } });
+  harness(route({
+    '/tokens/v1/solana/': () => jsonRes([]), // DexScreener has no pair, so GeckoTerminal must supply the pool
+    [`/tokens/${MINT}/pools`]: () => jsonRes({ data: [pool('QuoteSidePool1111111111111111111111111111111', OTHER), pool('GoodPool111111111111111111111111111111111111', MINT)] }),
+  }), { autoAdvance: true });
+  __clearCandles();
+  let st = freshState();
+  await discover(st);
+  let c = st.coins[keyOf('solana', MINT)];
+  assert.equal(c.pairAddress, undefined);
+  await loadCandleSet(st, c, '1H', '1m');
+  assert.equal(c.pairAddress, 'GoodPool111111111111111111111111111111111111', 'skips the quote-side pool that ranked first');
+
+  harness(route({
+    '/tokens/v1/solana/': () => jsonRes([]),
+    [`/tokens/${MINT}/pools`]: () => jsonRes({ data: [pool('QuoteSidePool1111111111111111111111111111111', OTHER)] }),
+  }), { autoAdvance: true });
+  delete detail[keyOf('solana', MINT)]; // a new session: the earlier lookup is forgotten
+  st = freshState();
+  await discover(st);
+  c = st.coins[keyOf('solana', MINT)];
+  const r = await loadCandleSet(st, c, '1H', '1m');
+  assert.equal(r.ok, false);
+  assert.match(!r.ok ? r.error : '', /quote side/);
+  assert.equal(c.pairAddress, undefined);
+});
+
 test('trading uses a price that is fresh: a cached answer cannot pass for a new one', async () => {
   const h = harness(route(), { autoAdvance: true });
   const st = freshState();

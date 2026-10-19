@@ -4,8 +4,8 @@
  * intervals with no trades stay missing, and the live candle only moves with a real, recent price from DexScreener/Jupiter.
  */
 import type { Candle, Coin, State } from '../types';
-import { ensurePool, getJSON } from '../engine';
-import { parseOhlcv } from '../providers/adapters';
+import { ensurePool, getJSON, poolIssues } from '../engine';
+import { parseOhlcv, sameToken } from '../providers/adapters';
 
 export type RangeId = '1H' | '4H' | '24H' | '7D' | '30D';
 export type IntervalId = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
@@ -56,6 +56,8 @@ export interface CandleSet {
   partial: boolean;
   /** time between the first and last candle */
   coverageMs: number;
+  /** GeckoTerminal confirmed the candles are for this coin's token (meta.base). false = it did not say. */
+  baseVerified: boolean;
 }
 export type CandleResult = { ok: true; set: CandleSet } | { ok: false; error: string };
 
@@ -71,7 +73,7 @@ export const GT_NETWORK: Record<string, string> = { solana: 'solana', ethereum: 
 export async function loadCandleSet(st: State, c: Coin, rangeId: RangeId, intervalId: IntervalId, o: { force?: boolean; prio?: 0 | 1 | 2; now?: number } = {}): Promise<CandleResult> {
   await ensurePool(st, c);
   const pool = c.pairAddress;
-  if (!pool) return { ok: false, error: st.sources['gt-pools']?.ok === false ? `No pool found (${st.sources['gt-pools']?.error})` : 'No trading pool found for this coin yet' };
+  if (!pool) return { ok: false, error: poolIssues[c.id] ? poolIssues[c.id] : st.sources['gt-pools']?.ok === false ? `No pool found (${st.sources['gt-pools']?.error})` : 'No trading pool found for this coin yet' };
   const range = rangeOf(rangeId);
   const iv = INTERVALS[validInterval(range, intervalId)];
   const n = candlesNeeded(range, iv);
@@ -79,6 +81,10 @@ export async function loadCandleSet(st: State, c: Coin, rangeId: RangeId, interv
   const r = await getJSON(st, 'gt-ohlcv', path, { validate: parseOhlcv, prio: o.prio ?? 0, force: o.force, ttlMs: cacheTtl(iv) });
   const src = st.sources['gt-ohlcv'];
   if (!r) return { ok: false, error: src?.error || 'GeckoTerminal returned no candles' };
+  // never chart another token (or the quote side of the pool) under this coin's name
+  if (r.baseAddress && !sameToken(c.chain, r.baseAddress, c.address)) {
+    return { ok: false, error: `Chart refused: pool ${pool.slice(0, 6)}… is priced in another token (${r.baseAddress.slice(0, 6)}…), not ${c.symbol}` };
+  }
   const now = o.now ?? Date.now();
   const cutoff = now - range.ms - iv.ms;
   const candles = r.candles.filter((k) => k.t >= cutoff);
@@ -88,6 +94,7 @@ export async function loadCandleSet(st: State, c: Coin, rangeId: RangeId, interv
     dropped: r.dropped, suspicious: r.suspicious,
     partial: candles[0].t > now - range.ms + 2 * iv.ms,
     coverageMs: candles[candles.length - 1].t - candles[0].t,
+    baseVerified: !!r.baseAddress,
   };
   sets.set(setKey(c.id, pool, range.id, iv.id), set);
   return { ok: true, set };

@@ -99,7 +99,7 @@ test('Jupiter execute is POST-only and never cached', async () => {
   const f = async () => new Response('{"status":"Success"}');
   const g = await handle(req('/p/jup/swap/v2/execute'), env, undefined, { fetch: f, cache });
   assert.equal(g.status, 405);
-  const p = await handle(req('/p/jup/swap/v2/execute', { method: 'POST', body: '{"signedTransaction":"x","requestId":"y"}' }), env, undefined, { fetch: f, cache });
+  const p = await handle(req('/p/jup/swap/v2/execute', { method: 'POST', body: JSON.stringify({ signedTransaction: 'A'.repeat(200), requestId: 'req-1234' }) }), env, undefined, { fetch: f, cache });
   assert.equal(p.status, 200);
   assert.equal(cache.size(), 0);
 });

@@ -8,13 +8,15 @@ Brand: black `#090909`, hot pink `#FF008C`, white. Green/red are used only for p
 
 | Area | Status |
 |---|---|
-| Provider code, caching, rate limits, retries, validation, health panel | **Verified** by 55 automated tests against recorded response shapes |
-| Cloudflare Worker (allowlist, CORS, key injection, edge cache, RPC allowlist) | **Verified** by 10 automated tests (not deployed by me) |
-| UI, charts wiring, ranges/intervals, live ticks, paper trading, phone layout | **Verified** in Chromium (52 checks) against a **mocked** API and a **fake** chart library |
-| Real provider responses (Jupiter, GeckoTerminal, DexScreener, pump.fun, RugCheck, RPC) | **Not verified live.** The build sandbox could not reach those sites. Response shapes come from earlier real captures and vendor docs |
-| TradingView Lightweight Charts rendering | **Not verified.** The library could not be downloaded in the sandbox. Written against the v4.2 API; a basic SVG chart is the fallback |
-| Wallet connect, Jupiter quote → sign → execute → confirm | **Unit-tested with a fake wallet only.** **Switched off.** Never run against mainnet |
-| pump.fun feeds | pump.fun publishes no API. These are unofficial and may not work at all |
+| Provider code, caching, rate limits, retries, validation, health panel | **Passed** automated tests against recorded response shapes (`npm test`) |
+| Worker: every endpoint on its own (CORS, allowlist, query/body validation, key injection, limits, error mapping, no secret leaks) | **Passed** 45 tests (`tests/worker*.test.ts`), stub upstream |
+| App ⇄ Worker over real HTTP with real browser CORS, phone layout | **Passed** 36 checks (`npm run test:e2e`): the real Worker code in a local server, the real built app in Chromium, mocked providers, fake chart library |
+| UI, charts wiring, ranges/intervals, live ticks, paper trading | **Passed** 52 browser checks (`npm run test:browser`), mocked API, fake chart library |
+| Worker deployed on Cloudflare (edge cache, rate-limit binding, secrets) | **Not tested.** Not deployed yet. `scripts/probe-worker.ts` tests the deployed Worker against the real providers |
+| Real provider responses | **Not tested live.** The build sandbox cannot reach the providers. Run the probe after deploying |
+| TradingView Lightweight Charts rendering | **Not tested.** The library could not be downloaded in the sandbox; a basic chart is the fallback |
+| Wallet connect, Jupiter quote → sign → execute → confirm | **Unit-tested with a fake wallet only. Switched off.** Never run on mainnet |
+| pump.fun feeds | Unofficial; may not work at all |
 
 ## Data sources (checked against vendor docs, 18 Oct 2026)
 
@@ -30,9 +32,10 @@ Every request goes through one core (`src/providers/http.ts`): response cache, i
 ```bash
 npm install            # installs lightweight-charts so it is bundled into the page
 npm run check          # type-check
-npm test               # 55 unit/integration tests
+npm test               # unit + Worker endpoint tests
 node build.mjs         # writes docs/index.html (GitHub Pages) and dist/bagz.html
-npm run test:browser   # needs Playwright + Chromium
+npm run test:browser   # app in Chromium, mocked providers (needs Playwright + Chromium)
+npm run test:e2e       # app ⇄ real Worker code over HTTP with real CORS, mocked providers
 ```
 
 Without `npm install`, `node build.mjs` still works: the page then loads Lightweight Charts v4.2.0 from jsDelivr at runtime (or from `docs/vendor/` if you run `npm run vendor:charts`).
@@ -43,25 +46,57 @@ Settings → Pages → Deploy from a branch → `main` → `/docs`. The site is 
 
 ## Deploy the proxy (recommended; needed for pump.fun and reliable GeckoTerminal)
 
+The site keeps working without it (calls go direct from the browser, with the limits above). Deploy and test the Worker first, then connect the site.
+
 1. `cd worker && npx wrangler login`
-2. Edit `wrangler.toml`: set `ALLOWED_ORIGINS` to your site origin.
-3. Secrets (never commit them):
+2. In `wrangler.toml`, set `ALLOWED_ORIGINS` to your exact site origin(s): scheme + host, no path, no wildcard (default `https://arielgutierrez15.github.io`). Keep `ALLOW_LOCALHOST = "0"` in production.
+3. Secrets live only in Cloudflare, never in the repo or the page:
    ```bash
    npx wrangler secret put JUPITER_API_KEY     # free key: developers.jup.ag/portal
-   npx wrangler secret put COINGECKO_API_KEY   # optional, raises GeckoTerminal limits
-   npx wrangler secret put SOLANA_RPC_URL      # optional, your Helius/QuickNode/etc. endpoint
+   npx wrangler secret put COINGECKO_API_KEY   # optional but recommended: CoinGecko Demo key (keyless GeckoTerminal ≈ 10 calls/min)
+   npx wrangler secret put SOLANA_RPC_URL      # optional: your Helius/QuickNode/etc. URL
+   npx wrangler secret put PROBE_TOKEN         # any long random string; lets the probe script test the Worker
    ```
-4. `npx wrangler deploy` → note the `https://bagz-proxy.<you>.workers.dev` URL. Check `/health`.
-5. Add a Cloudflare rate-limiting rule for the Worker (the built-in limiter is per-instance, best effort).
-6. Rebuild with the proxy: `BAGZ_PROXY_URL=https://bagz-proxy.<you>.workers.dev node build.mjs`, commit `docs/`. For a quick test without rebuilding, open the site with `?proxy=https://…` (remembered in the browser; `?proxy=off` clears it).
+   For local `wrangler dev`, put them in `worker/.dev.vars` (git-ignored).
+4. Hard rate limit (recommended): enable the Workers rate-limiting binding named `RATE_LIMITER` (commented block in `wrangler.toml`; check Cloudflare's current syntax). Without it, only the per-instance limits apply.
+5. `npx wrangler deploy` → note `https://bagz-proxy.<you>.workers.dev`.
+6. **Test every endpoint against the real providers before connecting the site:**
+   ```bash
+   npx tsx scripts/probe-worker.ts https://bagz-proxy.<you>.workers.dev --token <PROBE_TOKEN>
+   ```
+   It checks CORS from your origin, refusal of other origins and of tokenless scripts, then calls each endpoint and parses the answer with the app's own validators. It also prints Jupiter's real `/order` field names. FAIL = do not connect yet. pump.fun only warns.
+7. Connect: open the site with `?proxy=https://bagz-proxy.<you>.workers.dev` to try it (remembered in that browser; `?proxy=off` clears it). When the Data sources panel looks right, rebuild with `BAGZ_PROXY_URL=https://… node build.mjs` and commit `docs/`.
+
+### What the Worker enforces
+
+- **CORS / origin:** data routes (`/p/…`) answer only browsers from `ALLOWED_ORIGINS` (exact match; `*`, `null`, look-alike hosts and `http://` variants are refused). Requests without an Origin (curl, bots) are refused unless they carry `x-bagz-probe: <PROBE_TOKEN>`. `/health` is open and returns booleans only.
+- **Allowlist:** only the paths the app uses, each with its allowed query parameters and value formats; unknown or repeated parameters get 400 before anything reaches a provider. Queries are normalised so reordering cannot bust the cache.
+- **Bodies:** two POSTs exist. Swap execute must be exactly `{signedTransaction, requestId}` with sane sizes. RPC allows four read-only methods (`getTokenLargestAccounts`, `getTokenSupply`, `getLatestBlockhash`, `getSignatureStatuses`); `sendTransaction` and everything else is refused.
+- **Abuse limits:** per-IP requests/min (`RATE_PER_MIN`, 240), stricter POSTs/min (`RATE_POST_PER_MIN`, 20), the optional Cloudflare binding, and a per-provider upstream budget per minute on cache misses (Jupiter 50, GeckoTerminal 80 with a key / 8 without, DexScreener 240, pump.fun 30, RugCheck 30, RPC 100; override with `UPSTREAM_PER_MIN_<ID>`), so one visitor cannot burn your keys. Limited answers are 429 with `Retry-After` and `x-bagz-limit`.
+- **Responses:** JSON only (anything else becomes 502), 2 MB cap, no redirects followed, upstream error bodies never forwarded, errors not cached, keys never echoed.
 
 ## Real trading (off)
 
-`src/trading/` has Wallet Standard connection (Phantom, Solflare, Backpack), Jupiter Swap v2 `/order` → wallet signature → `/execute` → on-chain confirmation, with quote age limits, slippage, fee and impact display. No private key or seed phrase is ever requested or stored. Two locks keep it off: the build flag `BAGZ_LIVE_TRADING=1` and a check inside `executeSwap()`. Before enabling: run the whole flow on mainnet with a throw-away wallet and tiny amounts, confirm Jupiter's `/order` response fields (`priceImpact` is shown only if Jupiter reports it), and decide on priority-fee handling (not included in quotes).
+`src/trading/` has Wallet Standard connection (Phantom, Solflare, Backpack), Jupiter Swap v2 `/order` → wallet signature → `/execute` → on-chain confirmation, with quote age limits, slippage, fee and impact display. No private key or seed phrase is ever requested or stored. Two locks keep it off: the build flag `BAGZ_LIVE_TRADING=1` and a check inside `executeSwap()`.
+
+Do not set the flag until each of these has been verified independently (none has yet):
+1. Wallet connectivity with each supported wallet on desktop and phone.
+2. Transaction construction: decode Jupiter's returned transaction and confirm taker, mints, amounts and fee accounts match the quote.
+3. Security checks: deployed Worker probe passes, CORS refuses other origins, no key in the page, quote expiry and slippage limits enforced.
+4. Execution: tiny swaps from a throw-away wallet on mainnet, confirmed on-chain, including failure cases (expired quote, rejected signature, slippage exceeded).
 
 ## Paper trading
 
 Starts at $10,000. Fills use constant-product price impact against real pool liquidity, a 0.5% fee, your slippage limit, and only a price fetched in the last 60 seconds (the ticket re-fetches on open and every 10 s). Wallet is saved in the browser (`frenzy.live.v1` key, kept from the Frenzy version so old wallets survive); Back up / Restore buttons export JSON.
+
+## Data compatibility rules
+
+A value from one provider is only combined with another's when they describe the same thing:
+- Coins are keyed by chain + token address; DexScreener prices are taken only from pairs where the coin is the **base** token.
+- A GeckoTerminal pool is used for charts/trades only if the coin is its **base** token; quote-side pools are skipped, and if no compatible pool exists the chart says so.
+- Candles are refused if GeckoTerminal's `meta.base` names another token; if it gives no `meta`, the chart says the token was not confirmed.
+- The chart warns when its last close and the quoted price (different pool) differ by more than 3%.
+- Stale answers are labelled stale with their real fetch time. When every source is unreachable the app shows a bundled snapshot with a dated banner, frozen prices and trading off.
 
 ## Known limitations
 

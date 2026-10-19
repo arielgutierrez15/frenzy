@@ -9,6 +9,9 @@ ALLOWED_ORIGINS = "https://arielgutierrez15.github.io"
 ALLOW_LOCALHOST = "0"
 # per-IP requests per minute per Worker instance (best effort; also add a Cloudflare rate-limiting rule)
 RATE_PER_MIN = "240"
+# POST requests (swap execute, RPC) per IP per minute
+RATE_POST_PER_MIN = "20"
+# per-provider upstream calls per minute (cache misses), e.g. UPSTREAM_PER_MIN_JUP = "50"
 # "demo" (default, 100 calls/min) or "pro" when COINGECKO_API_KEY is a paid key
 COINGECKO_PLAN = "demo"
 
@@ -16,3 +19,12 @@ COINGECKO_PLAN = "demo"
 #   npx wrangler secret put JUPITER_API_KEY      (free key from developers.jup.ag/portal)
 #   npx wrangler secret put COINGECKO_API_KEY    (optional; raises GeckoTerminal limits)
 #   npx wrangler secret put SOLANA_RPC_URL       (optional; your Helius/QuickNode/etc. endpoint)
+#   npx wrangler secret put PROBE_TOKEN          (random string; lets scripts/probe-worker.ts test the deployed Worker)
+# For `wrangler dev`, put them in worker/.dev.vars (git-ignored).
+
+# Hard per-IP rate limit (recommended). Uncomment after checking Cloudflare's current Workers rate-limiting syntax.
+# [[unsafe.bindings]]
+# name = "RATE_LIMITER"
+# type = "ratelimit"
+# namespace_id = "1001"
+# simple = { limit = 120, period = 60 }

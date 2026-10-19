@@ -41,6 +41,18 @@ export const parseDexPairs = (j: unknown) => {
 
 // ------------------------------------------------------------------ GeckoTerminal
 export interface GtList { data: Record<string, any>[]; included: Record<string, any>[] }
+/**
+ * GeckoTerminal lists pools where the token is the base OR the quote. A chart and a USD price for "the token" are only
+ * comparable when the token is the base of the pool, so only those pools are usable.
+ */
+export function poolHasBase(pool: any, network: string, address: string): boolean {
+  const id = pool?.relationships?.base_token?.data?.id;
+  if (typeof id !== 'string') return false;
+  const a = id.slice(id.indexOf('_') + 1);
+  return id.startsWith(network + '_') && (network === 'solana' ? a === address : a.toLowerCase() === address.toLowerCase());
+}
+export function sameToken(chain: string, a: string, b: string): boolean { return chain === 'solana' ? a === b : a.toLowerCase() === b.toLowerCase(); }
+
 export function parseGtPools(j: unknown): GtList {
   if (!isObj(j) || !Array.isArray(j.data)) throw new ValidationError('GeckoTerminal pools: missing "data" list');
   const data = j.data.filter((p: unknown) => isObj(p) && typeof p.id === 'string' && isObj(p.attributes));
@@ -67,7 +79,7 @@ export function parseGtTrades(j: unknown): ChainTradeRow[] {
   return out;
 }
 
-export interface OhlcvResult { candles: Candle[]; dropped: number; suspicious: number }
+export interface OhlcvResult { candles: Candle[]; dropped: number; suspicious: number; /** token addresses GeckoTerminal says the candles are for (meta.base / meta.quote), when it says */ baseAddress?: string; quoteAddress?: string }
 /**
  * Validates [ts, o, h, l, c, v] rows. A row is dropped when any value is not a finite number, any price is <= 0,
  * volume is negative, high < low, or high/low do not contain open and close. Duplicate timestamps keep the last row.
@@ -88,7 +100,9 @@ export function parseOhlcv(j: unknown): OhlcvResult {
     byT.set(ts!, { t: ts! * 1000, o: o!, h: h!, l: l!, c: c!, v: v! });
   }
   if (list.length > 0 && byT.size === 0) throw new ValidationError('GeckoTerminal candles: every row was invalid');
-  return { candles: [...byT.values()].sort((a, b) => a.t - b.t), dropped, suspicious };
+  const meta = isObj(j) && isObj((j as any).meta) ? (j as any).meta : undefined;
+  const addr = (x: unknown) => (isObj(x) && typeof x.address === 'string' && x.address ? x.address : undefined);
+  return { candles: [...byT.values()].sort((a, b) => a.t - b.t), dropped, suspicious, baseAddress: addr(meta?.base), quoteAddress: addr(meta?.quote) };
 }
 
 // ------------------------------------------------------------------ pump.fun (unofficial)

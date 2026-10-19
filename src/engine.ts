@@ -9,6 +9,7 @@ import { SOURCE_LABELS as LABELS, type SourceId as ProviderSource } from './prov
 import {
   parseJupiterTokens, parseJupiterPrice, parseDexProfiles, parseDexPairs, parseGtPools, parseGtTrades as parseGtTradeRows,
   parsePumpCoins, parseRugSummary, parseRpc, type PumpCoin,
+  poolHasBase,
 } from './providers/adapters';
 
 export const START_CASH = 10_000;
@@ -392,6 +393,8 @@ export const detail: Record<string, {
 }> = {};
 
 /** Coins found on pump.fun or Jupiter may not have a DexScreener pair yet: ask GeckoTerminal for the token's busiest pool. */
+/** why a coin has no usable pool, when pools exist but none is compatible */
+export const poolIssues: Record<string, string> = {};
 export async function ensurePool(st: State, c: Coin) {
   if (c.pairAddress) return;
   const d = (detail[c.id] ||= {});
@@ -399,7 +402,10 @@ export async function ensurePool(st: State, c: Coin) {
   d.poolTried = true;
   const j = await getJSON(st, 'gt-pools', `/networks/${GT_NET[c.chain]}/tokens/${c.address}/pools?page=1`, { validate: parseGtPools, prio: 0 });
   if (!j) { d.poolTried = false; return; } // let the next open try again instead of caching a failure
-  const top = j.data[0];
+  // only a pool where this token is the BASE can be charted/priced against it; a quote-side pool would be a different price series
+  const top = j.data.find((p: any) => poolHasBase(p, GT_NET[c.chain], c.address));
+  if (!top && j.data.length) poolIssues[c.id] = 'GeckoTerminal only lists pools where this token is the quote side, so there is no compatible chart';
+  else delete poolIssues[c.id];
   const addr = top?.attributes?.address;
   if (addr) upsert(st, { chain: c.chain, address: c.address, pairAddress: addr, dexId: c.dexId ?? top?.relationships?.dex?.data?.id?.replace('pump-fun', 'pumpfun') });
 }
