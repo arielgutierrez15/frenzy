@@ -108,7 +108,7 @@ export function TradeSheet({ intent, onClose }: { intent: TradeIntent; onClose: 
           <>
             <label className="field" htmlFor="trade-usd">
               <span>Spend</span>
-              <div className="amount"><span className="amount-cur">$</span><input id="trade-usd" inputMode="decimal" autoComplete="off" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ''))} autoFocus /></div>
+              <div className="amount"><span className="amount-cur">$</span><input id="trade-usd" inputMode="decimal" autoComplete="off" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))} autoFocus /></div>
               <span className="muted small num">Cash {usd(st.user.cash)}</span>
             </label>
             <div className="presets">

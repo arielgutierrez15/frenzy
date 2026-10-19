@@ -21,7 +21,7 @@ export function ChartPanel({ c, entry, isMajor }: { c: Coin; entry?: number; isM
   const [range, setRange] = useState<RangeId>(() => (RANGES.some((r) => r.id === read(LS.range)) ? (read(LS.range) as RangeId) : '24H'));
   const [ivs, setIvs] = useState<Record<string, string>>(readIv);
   const [type, setType] = useState<ChartType>(() => (['candles', 'line', 'area'].includes(read(LS.type) || '') ? (read(LS.type) as ChartType) : 'candles'));
-  const [axis, setAxis] = useState<'price' | 'mcap'>(() => (read(LS.axis) as 'price' | 'mcap') || (isMajor ? 'price' : 'mcap'));
+  const [axis, setAxis] = useState<'price' | 'mcap'>(() => { const a = read(LS.axis); return a === 'price' || a === 'mcap' ? a : isMajor ? 'price' : 'mcap'; });
   const rangeSpec = rangeOf(range);
   const interval: IntervalId = validInterval(rangeSpec, ivs[range]);
   const iv = INTERVALS[interval];
@@ -75,7 +75,7 @@ export function ChartPanel({ c, entry, isMajor }: { c: Coin; entry?: number; isM
         <Seg label="Range" value={range} onChange={pickRange} options={RANGES.map((r) => ({ v: r.id, l: r.label }))} />
         <Seg label="Candle interval" value={interval} onChange={pickIv} options={rangeSpec.intervals.map((i) => ({ v: i, l: INTERVALS[i].label }))} />
         <Seg label="Chart type" value={type} onChange={pickType} options={[{ v: 'candles', l: 'Candles' }, { v: 'line', l: 'Line' }, { v: 'area', l: 'Area' }]} />
-        <Seg label="Chart axis" value={axis} onChange={pickAxis} options={[{ v: 'price', l: 'Price' }, { v: 'mcap', l: 'MCap' }]} />
+        <Seg label="Chart axis" value={axis === 'mcap' && supply > 0 ? 'mcap' : 'price'} onChange={pickAxis} options={[{ v: 'price', l: 'Price' }, { v: 'mcap', l: 'MCap' }]} />
       </div>
 
       {set ? (
