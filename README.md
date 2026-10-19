@@ -1,58 +1,72 @@
-# Frenzy
+# BAGZ
 
-Paper-trade real memecoins at their live prices. Find coins on a Gem Radar that merges several market data sites, watch real on-chain swaps, follow real wallets, and track your paper PnL. No wallet connection, no real money, and no fake users or bot traders.
+Live memecoin charts, a Gem Radar for new launches and a paper-trading desk. React + TypeScript, built to one static page for GitHub Pages, with an optional Cloudflare Worker proxy for API keys, CORS and shared caching.
 
-## Run it
+Brand: black `#090909`, hot pink `#FF008C`, white. Green/red are used only for price up/down.
+
+## What is real, and what is not
+
+| Area | Status |
+|---|---|
+| Provider code, caching, rate limits, retries, validation, health panel | **Verified** by 55 automated tests against recorded response shapes |
+| Cloudflare Worker (allowlist, CORS, key injection, edge cache, RPC allowlist) | **Verified** by 10 automated tests (not deployed by me) |
+| UI, charts wiring, ranges/intervals, live ticks, paper trading, phone layout | **Verified** in Chromium (52 checks) against a **mocked** API and a **fake** chart library |
+| Real provider responses (Jupiter, GeckoTerminal, DexScreener, pump.fun, RugCheck, RPC) | **Not verified live.** The build sandbox could not reach those sites. Response shapes come from earlier real captures and vendor docs |
+| TradingView Lightweight Charts rendering | **Not verified.** The library could not be downloaded in the sandbox. Written against the v4.2 API; a basic SVG chart is the fallback |
+| Wallet connect, Jupiter quote → sign → execute → confirm | **Unit-tested with a fake wallet only.** **Switched off.** Never run against mainnet |
+| pump.fun feeds | pump.fun publishes no API. These are unofficial and may not work at all |
+
+## Data sources (checked against vendor docs, 18 Oct 2026)
+
+- **Jupiter** `api.jup.ag` — Tokens v2, Price v3, Swap v2. API key header `x-api-key`; keyless 0.5 req/s, free key 1 req/s. `lite-api.jup.ag` is being phased out (kept only as a read-only fallback, never for swaps).
+- **GeckoTerminal** — keyless is about 10 calls/min shared per IP and not meant for production. The proxy can use a CoinGecko Demo key (100/min).
+- **DexScreener**, **RugCheck**, **Solana RPC** — keyless; the public RPC is heavily limited, so give the proxy your own RPC URL.
+- **pump.fun** `frontend-api-v3` — undocumented website backend; browsers are usually blocked, so it works only through the proxy, if at all. When it is down the app says so and still finds pump.fun coins through Jupiter/GeckoTerminal launch data.
+
+Every request goes through one core (`src/providers/http.ts`): response cache, in-flight de-duplication, token-bucket rate limits with priorities, timeouts, retries with backoff, 429 cool-downs, host fallback, shape validation, and per-source health. The Data sources panel on Home shows the real time each provider last answered. Stale answers are labelled stale; nothing is invented.
+
+## Setup
 
 ```bash
-npm install
-npm run dev          # http://localhost:3000
-npm run build:single # dist/frenzy.html, one file you can open by double-clicking
+npm install            # installs lightweight-charts so it is bundled into the page
+npm run check          # type-check
+npm test               # 55 unit/integration tests
+node build.mjs         # writes docs/index.html (GitHub Pages) and dist/bagz.html
+npm run test:browser   # needs Playwright + Chromium
 ```
 
-Live data loads in any normal browser: `npm run dev`, the single `frenzy.html` file, or any static host (GitHub Pages, Netlify, Vercel).
+Without `npm install`, `node build.mjs` still works: the page then loads Lightweight Charts v4.2.0 from jsDelivr at runtime (or from `docs/vendor/` if you run `npm run vendor:charts`).
 
-Pages published inside claude.ai can't make outside requests. There, Frenzy shows a bundled snapshot of real data captured on 18 Oct 2026 (Jupiter, pump.fun, DexScreener). The page labels it as a snapshot, freezes prices and turns paper trading off. If a live source answers later, live data takes over.
+## Deploy the site (GitHub Pages)
 
-## Data sources
+Settings → Pages → Deploy from a branch → `main` → `/docs`. The site is `https://<user>.github.io/frenzy/`.
 
-| Source | What Frenzy reads |
-| --- | --- |
-| Jupiter (lite-api.jup.ag) | Newest tokens, top trending (1h), top organic score (1h), most traded (1h): price, holders, mint/freeze authority, top-holder and dev %, organic score |
-| pump.fun (frontend-api-v3.pump.fun) | Newest coins and coins livestreaming now: market cap, bonding-curve status (graduated or not), socials |
-| DexScreener | Newest token profiles, top boosts, and the batch price refresh for every tracked coin every 20 s |
-| GeckoTerminal | New and trending pools (Solana and Base), 1-minute candles, and real swaps with wallet addresses |
-| Solana public RPC | The 20 largest holders of a Solana coin |
-| Axiom, GMGN, Photon | No public data API. Each coin page links out to them |
+## Deploy the proxy (recommended; needed for pump.fun and reliable GeckoTerminal)
 
-Coins are merged by contract address, so one coin seen on three sites carries all three sites' data.
+1. `cd worker && npx wrangler login`
+2. Edit `wrangler.toml`: set `ALLOWED_ORIGINS` to your site origin.
+3. Secrets (never commit them):
+   ```bash
+   npx wrangler secret put JUPITER_API_KEY     # free key: developers.jup.ag/portal
+   npx wrangler secret put COINGECKO_API_KEY   # optional, raises GeckoTerminal limits
+   npx wrangler secret put SOLANA_RPC_URL      # optional, your Helius/QuickNode/etc. endpoint
+   ```
+4. `npx wrangler deploy` → note the `https://bagz-proxy.<you>.workers.dev` URL. Check `/health`.
+5. Add a Cloudflare rate-limiting rule for the Worker (the built-in limiter is per-instance, best effort).
+6. Rebuild with the proxy: `BAGZ_PROXY_URL=https://bagz-proxy.<you>.workers.dev node build.mjs`, commit `docs/`. For a quick test without rebuilding, open the site with `?proxy=https://…` (remembered in the browser; `?proxy=off` clears it).
 
-## Categories (built from the combined data)
+## Real trading (off)
 
-Hot on 2+ sites, New (24h), pump.fun, Live on pump.fun, Graduated, Most traded, Boosted, Organic flow, Dogs, Cats, Frogs, AI & agents, Politics, Blue chips. Stablecoins, wrapped majors, liquid-staking tokens and tokenized stocks are filtered out of the radar.
+`src/trading/` has Wallet Standard connection (Phantom, Solflare, Backpack), Jupiter Swap v2 `/order` → wallet signature → `/execute` → on-chain confirmation, with quote age limits, slippage, fee and impact display. No private key or seed phrase is ever requested or stored. Two locks keep it off: the build flag `BAGZ_LIVE_TRADING=1` and a check inside `executeSwap()`. Before enabling: run the whole flow on mainnet with a throw-away wallet and tiny amounts, confirm Jupiter's `/order` response fields (`priceImpact` is shown only if Jupiter reports it), and decide on priority-fee handling (not included in quotes).
 
-## Gem Score
+## Paper trading
 
-0–100 from the checks the sources report: mint and freeze authority, top-holder %, deployer %, deployer's past launches, holder count, liquidity, socials, Jupiter organic score, buy/sell balance, and how many sites list the coin. Checks a source didn't report count as unknown, not as passes. A coin whose liquidity is pulled or that falls 90% from its session peak is flagged as rugged.
+Starts at $10,000. Fills use constant-product price impact against real pool liquidity, a 0.5% fee, your slippage limit, and only a price fetched in the last 60 seconds (the ticket re-fetches on open and every 10 s). Wallet is saved in the browser (`frenzy.live.v1` key, kept from the Frenzy version so old wallets survive); Back up / Restore buttons export JSON.
 
-## Users
+## Known limitations
 
-Nobody else uses Frenzy yet, so there is no user leaderboard or social feed of fake people. The Live feed and the Wallets tab show real wallets from on-chain swaps. Your own paper trades and theses appear under "You".
-
-## Colors
-
-Solana palette: purple `#9945FF` for actions and gems, green `#14F195` for gains, the purple-to-green gradient on the wordmark and PnL card. Dark and light themes both follow the viewer's system setting.
-
-## Files
-
-```
-src/engine.ts      data fetching and merging, Gem Score, categories, paper trading, orders, persistence
-src/snapshot.ts    real data captured 18 Oct 2026, used only when every live source is unreachable
-src/seed.ts        blue-chip contract addresses, narrative keywords, outbound links
-src/store.ts       store and refresh loops (prices 20 s, discovery 60 s, swaps 30 s)
-src/views.tsx      Live feed, Gem Radar, coin page, Wallet, Wallets
-src/TradeSheet.tsx trade sheet and PnL share card
-src/ui.tsx         icons, badges, score ring, charts
-src/App.tsx        shell, navigation, alerts, toasts
-src/styles.css     styling, Solana palette in dark and light
-```
+- Candles come only from GeckoTerminal for the coin's busiest pool; intervals with no trades have no candle. Very new tokens show less history than the range.
+- The chart pool and the quoted price (DexScreener's best pair) can differ; the chart warns above 3%.
+- pump.fun livestream status is unavailable without a working pump.fun feed.
+- Holder lists use the public Solana RPC and often hit its limits.
+- Paper trades are simulations; they never touch a wallet.

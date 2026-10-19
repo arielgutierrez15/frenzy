@@ -6,7 +6,7 @@ import { Avatar, Change, CoinBadge, Icon, PriceChart, ScoreRing, Spark, EquityCh
 import { ago, compact, pct, price as fmtPrice, qty as fmtQty, usd, signedUsd } from './format';
 import {
   change24, userStats, fumbles, cancelOrder, uid, scoreCoin, categoriesOf, CATEGORIES, SOURCE_SHORT, START_CASH,
-  detail, loadCandles, loadTrades, loadHolders, loadDetails, topWallets, short, isPumpFun, TIMEFRAMES, Timeframe, exportWallet, importWallet,
+  detail, loadTrades, loadHolders, loadDetails, topWallets, short, isPumpFun, exportWallet, importWallet,
 } from './engine';
 
 function BannerImg({ src }: { src: string }) {
@@ -15,6 +15,9 @@ function BannerImg({ src }: { src: string }) {
   return <div className="coin-banner"><img src={src} alt="" referrerPolicy="no-referrer" onError={() => setOk(false)} /></div>;
 }
 import { tradeLinks, walletLink } from './seed';
+import { ChartPanel } from './chart/ChartPanel';
+import { HealthPanel } from './Health';
+import { LiveSwap } from './trading/LiveSwap';
 
 // ======================================================================
 // shared bits
@@ -36,7 +39,7 @@ export function FollowButton({ id, small = false }: { id: string; small?: boolea
   );
 }
 
-function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { v: T; l: string }[]; onChange: (v: T) => void; label: string }) {
+export function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { v: T; l: string }[]; onChange: (v: T) => void; label: string }) {
   return (
     <div className="seg" role="tablist" aria-label={label}>
       {options.map((o) => (
@@ -66,7 +69,7 @@ function DataGate({ children }: { children: React.ReactNode }) {
     <>
       <div className="banner banner-warn small" role="status">
         <Icon.warn size={16} />
-        <span>Live requests are blocked here, so this is a real snapshot from Jupiter, pump.fun and DexScreener taken {new Date(st.snapshotAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. Prices are frozen and trading is off. Open frenzy.html in a browser or run npm run dev for live data.</span>
+        <span>Live requests are blocked here, so this is a real snapshot from Jupiter, pump.fun and DexScreener taken {new Date(st.snapshotAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. Prices are frozen and trading is off. Open bagz.html in a browser or run npm run dev for live data.</span>
       </div>
       {children}
     </>
@@ -74,7 +77,7 @@ function DataGate({ children }: { children: React.ReactNode }) {
   if (st.loaded && !anyOk) return (
     <Empty
       title="Couldn’t reach any data source"
-      body="Every request was blocked. Pages published inside claude.ai can’t make outside requests. Open frenzy.html directly in your browser, run npm run dev, or host the build, and live data loads."
+      body="Every request was blocked. Pages published inside claude.ai can’t make outside requests. Open bagz.html directly in your browser, run npm run dev, or host the build, and live data loads."
     />
   );
   return <>{children}</>;
@@ -374,30 +377,24 @@ export function CoinView({ id }: { id: string }) {
   const st = useStore();
   const nav = useNav();
   const c = st.coins[id];
-  const [mode, setMode] = useState<'candles' | 'line'>('candles');
-  const [axis, setAxis] = useState<'price' | 'mcap'>(c && !st.majors.includes(c.id) ? 'mcap' : 'price');
   const [tab, setTab] = useState<'trades' | 'holders' | 'thesis'>('trades');
   const [draft, setDraft] = useState('');
   const [bull, setBull] = useState(true);
-  const [tf, setTf] = useState<Timeframe>(() => { try { return (localStorage.getItem('frenzy.tf') as Timeframe) || '5m'; } catch { return '5m'; } });
-  const [chartBusy, setChartBusy] = useState(false);
 
   useEffect(() => {
     setFocus(id);
     let alive = true;
-    const run = async (force = false) => {
+    const run = async () => {
       const s = getState();
       const coin = s.coins[id];
       if (!coin) return;
-      await Promise.all([loadCandles(s, coin, tf, force), loadTrades(s, coin), loadDetails(s, coin)]);
-      if (alive) { setChartBusy(false); emit(); }
+      await Promise.all([loadTrades(s, coin, 0), loadDetails(s, coin)]);
+      if (alive) emit();
     };
-    setChartBusy(true);
-    run(true);
-    const t = setInterval(() => run(true), 30_000);
+    run();
+    const t = setInterval(run, 30_000);
     return () => { alive = false; clearInterval(t); setFocus(undefined); };
-  }, [id, c?.pairAddress, tf]);
-  const pickTf = (v: Timeframe) => { setTf(v); try { localStorage.setItem('frenzy.tf', v); } catch { /* ignore */ } };
+  }, [id, c?.pairAddress]);
 
   useEffect(() => {
     if (tab !== 'holders' || !c) return;
@@ -410,21 +407,6 @@ export function CoinView({ id }: { id: string }) {
   const orders = st.user.orders.filter((o) => o.coinId === c.id);
   const theses = st.user.theses.filter((t) => t.coinId === c.id);
   const s = scoreCoin(c);
-  const supply = c.price > 0 ? c.mcap / c.price : 0;
-  const tfInfo = TIMEFRAMES.find((x) => x.id === tf)!;
-  const haveCandles = !!(d.candles && d.candles.length > 1 && d.candlesTf === tf);
-  // keep the newest candle moving with the live price between GeckoTerminal refreshes
-  const liveCandles = (() => {
-    if (!haveCandles) return [];
-    const ks = d.candles!.slice();
-    const lastK = ks[ks.length - 1];
-    if (c.price > 0 && Date.now() - c.updatedAt < 90_000 && Date.now() - lastK.t < tfInfo.ms * 2) {
-      if (Date.now() - lastK.t < tfInfo.ms) ks[ks.length - 1] = { ...lastK, c: c.price, h: Math.max(lastK.h, c.price), l: Math.min(lastK.l, c.price) };
-      else ks.push({ t: lastK.t + tfInfo.ms, o: lastK.c, h: Math.max(lastK.c, c.price), l: Math.min(lastK.c, c.price), c: c.price, v: 0 });
-    }
-    return ks;
-  })();
-  const candles = haveCandles ? liveCandles : c.spark.map((p) => ({ t: p.t, o: p.p, h: p.p, l: p.p, c: p.p, v: 0 }));
   const cats = categoriesOf(st, c).map((k) => CATEGORIES.find((x) => x.id === k)?.label).filter(Boolean);
   const copyAddr = () => {
     navigator.clipboard?.writeText(c.address).then(() => nav.toast('info', 'Address copied'), () => nav.toast('info', 'Copy blocked', c.address));
@@ -451,15 +433,7 @@ export function CoinView({ id }: { id: string }) {
       {c.rugged && <div className="banner banner-down"><Icon.warn /> {c.rugged === 'liquidity' ? 'Most of this pool’s liquidity was pulled while you were watching.' : 'Price fell more than 90% from its peak this session.'} Selling returns very little.</div>}
       {cats.length > 0 && <div className="chips">{cats.map((l) => <span key={l} className="chip chip-cat">{l}</span>)}</div>}
       <div className="panel">
-        <div className="toolbar">
-          <Seg label="Timeframe" value={tf} onChange={pickTf} options={TIMEFRAMES.map((x) => ({ v: x.id, l: x.label }))} />
-          <Seg label="Chart axis" value={axis} onChange={setAxis} options={[{ v: 'price', l: 'Price' }, { v: 'mcap', l: 'MCap' }]} />
-          <Seg label="Chart type" value={haveCandles ? mode : 'line'} onChange={setMode} options={haveCandles ? [{ v: 'candles', l: 'Candles' }, { v: 'line', l: 'Line' }] : [{ v: 'line', l: 'Line' }]} />
-          <span className="muted small">{chartBusy ? 'Loading candles…' : haveCandles ? `${tfInfo.label} candles · GeckoTerminal · live` : d.candlesError ? `Candles unavailable (${d.candlesError}). Showing prices sampled this session.` : candles.length > 1 ? 'Prices sampled this session' : 'Waiting for chart data'}</span>
-        </div>
-        {candles.length > 1 ? (
-          <PriceChart candles={candles} mode={haveCandles ? mode : 'line'} entry={pos ? pos.cost / pos.qty : undefined} supply={supply} showMcap={axis === 'mcap' && supply > 0} stepMs={haveCandles ? tfInfo.ms : 60_000} />
-        ) : <div className="chart-empty muted">{st.snapshotAt ? 'Charts need live data. This view is a frozen snapshot.' : 'Chart fills in as prices arrive.'}</div>}
+        <ChartPanel c={c} entry={pos ? pos.cost / pos.qty : undefined} isMajor={st.majors.includes(c.id)} />
         <dl className="stats">
           <div><dt>Market cap</dt><dd className="num">{c.mcap ? compact(c.mcap) : '—'}</dd></div>
           <div><dt>Liquidity</dt><dd className="num">{c.liq ? compact(c.liq) : '—'}</dd></div>
@@ -512,6 +486,7 @@ export function CoinView({ id }: { id: string }) {
               <a className="link small" href={`https://rugcheck.xyz/tokens/${c.address}`} target="_blank" rel="noopener noreferrer">Full report on RugCheck <Icon.external size={12} /></a>
             </div>
           )}
+          <LiveSwap c={c} />
           <div className="panel">
             <h2>Trade or check it elsewhere</h2>
             <div className="ext-links">
@@ -687,7 +662,7 @@ export function WalletView() {
             const blob = new Blob([exportWallet(getState())], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `frenzy-wallet-${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `bagz-wallet-${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a); a.click(); a.remove();
             setTimeout(() => URL.revokeObjectURL(a.href), 2000);
             nav.toast('info', 'Wallet backup saved', `${st.user.trades.length} trades and ${Object.keys(st.user.positions).length} positions.`);
@@ -774,7 +749,7 @@ export function LeadersView() {
       <header className="view-head">
         <div>
           <h1>Wallets</h1>
-          <p className="muted">Real wallets seen swapping in the pools Frenzy watches, ranked by volume this session. Nobody else uses Frenzy yet, so there’s no user leaderboard. Your paper wallet is shown on its own.</p>
+          <p className="muted">Real wallets seen swapping in the pools BAGZ watches, ranked by volume this session. Nobody else uses BAGZ yet, so there’s no user leaderboard. Your paper wallet is shown on its own.</p>
         </div>
       </header>
       <button className="you-row" onClick={() => nav.go('wallet')}>
@@ -826,7 +801,7 @@ export function TraderView({ id }: { id: string }) {
             <a className="link" href={walletLink(chain, id)} target="_blank" rel="noopener noreferrer">Explorer <Icon.external size={12} /></a>
             {chain === 'solana' && <a className="link" href={`https://gmgn.ai/sol/address/${id}`} target="_blank" rel="noopener noreferrer">GMGN <Icon.external size={12} /></a>}
           </div>
-          <span className="muted small">Only swaps Frenzy saw this session are listed. The explorer has the full history.</span>
+          <span className="muted small">Only swaps BAGZ saw this session are listed. The explorer has the full history.</span>
         </div>
         <span className="grow" />
         <FollowButton id={id} />
@@ -975,10 +950,11 @@ export function HomeView() {
                     <b>${c.symbol}</b><span className="grow" /><span className="num">{compact(t.usd)}</span><span className="muted small">{ago(t.t)}</span>
                   </li>
                 ) : null; })}
-                {!tape.length && <li className="muted small">{st.snapshotAt ? 'Swaps need live data.' : 'The first real swaps arrive within 30 seconds.'}</li>}
+                {!tape.length && <li className="muted small">{st.snapshotAt ? 'Swaps need live data.' : 'The first real swaps arrive within a minute.'}</li>}
               </ul>
             </section>
           </div>
+          <HealthPanel />
         </div>
       </DataGate>
     </section>

@@ -7,6 +7,7 @@ import { Avatar, CoinBadge, Icon, ScoreRing } from './ui';
 import { toastQueue, userStats, scoreCoin, topWallets, short } from './engine';
 import { ago, compact, pct, usd, signedUsd } from './format';
 import type { Notif } from './types';
+import { Wordmark, BRAND_TAGLINE } from './brand';
 
 const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -73,9 +74,9 @@ export default function App() {
     <NavCtx.Provider value={nav}>
       <div className="app">
         <aside className="rail">
-          <button className="brand" onClick={() => nav.go('home')} aria-label="Frenzy home">
-            <span className="brand-mark">frenzy</span>
-            <span className="brand-sub">paper memecoin desk</span>
+          <button className="brand" onClick={() => nav.go('home')} aria-label="BAGZ home">
+            <Wordmark />
+            <span className="brand-sub">{BRAND_TAGLINE}</span>
           </button>
           <nav className="rail-nav" aria-label="Main">
             {TABS.map((t) => {
@@ -96,7 +97,7 @@ export default function App() {
         </aside>
 
         <header className="topbar">
-          <button className="brand" onClick={() => nav.go('home')} aria-label="Frenzy home"><span className="brand-mark">frenzy</span></button>
+          <button className="brand" onClick={() => nav.go('home')} aria-label="BAGZ home"><Wordmark /></button>
           <span className="grow" />
           <button className="topbar-cash" onClick={() => nav.go('wallet')}>
             <b className="num">{compact(s.equity)}</b>
@@ -148,13 +149,15 @@ export default function App() {
 
 function SourceBadge() {
   const st = useStore();
+  const nav = useNav();
   const list = Object.values(st.sources);
   const ok = list.filter((x) => x.ok).length;
   const label = st.snapshotAt ? `Snapshot · ${new Date(st.snapshotAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : !list.length || list.every((x) => x.ok === null) ? 'Connecting…' : ok === 0 ? 'Offline' : `Live · ${ok}/${list.length} sources`;
   return (
-    <span className={`source ${ok === list.length && ok > 0 ? 'source-live' : ok === 0 && list.some((x) => x.ok === false) ? 'source-off' : ''}`} title={list.map((x) => `${x.label}: ${x.ok ? 'ok' : x.ok === false ? x.error : 'waiting'}`).join('\n')}>
+    <button className={`source ${ok === list.length && ok > 0 ? 'source-live' : ok === 0 && list.some((x) => x.ok === false) ? 'source-off' : ''}`} title={list.map((x) => `${x.label}: ${x.ok ? (x.stale ? 'stale' : 'ok') + (x.at ? ' · ' + ago(x.at) + ' ago' : '') : x.ok === false ? x.error : 'waiting'}`).join('\n')}
+      onClick={() => { nav.go('home'); setTimeout(() => document.getElementById('data-health')?.scrollIntoView({ behavior: 'smooth' }), 80); }}>
       <span className="pulse" />{label}
-    </span>
+    </button>
   );
 }
 

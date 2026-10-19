@@ -1,28 +1,27 @@
 /* Layout: app shell — left rail (desk), center column, right "now" rail; collapses to phone tabs.
-   Look: pure black terminal. The wordmark is Solana green (#14F195); Solana purple (#9945FF) marks actions and gems;
-   green/rose carry PnL. One deliberate dark theme for every viewer. */
+   Look: BAGZ — near-black (#090909) surfaces, hot pink (#FF008C) for brand, actions and chart lines, white text.
+   Green/red are kept only for up/down price moves so PnL stays readable. One deliberate dark theme for every viewer. */
 :root {
-  --ink: #000000;
-  --panel: #0b0b0d;
-  --panel-2: #151518;
-  --line: #232329;
-  --fg: #f4f4f6;
-  --muted: #8e8e99;
-  --accent: #9945ff;
-  --accent-fg: #b68aff;
+  --ink: #090909;
+  --panel: #101012;
+  --panel-2: #19191d;
+  --line: #26262c;
+  --fg: #ffffff;
+  --muted: #9a9aa5;
+  --accent: #ff008c;
+  --accent-fg: #ff4fae;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(153, 69, 255, 0.16);
-  --sol-green: #14f195;
-  --logo: #14f195;
-  --up: #14f195;
-  --up-soft: rgba(20, 241, 149, 0.12);
-  --down: #ff5c7a;
-  --down-soft: rgba(255, 92, 122, 0.13);
+  --accent-soft: rgba(255, 0, 140, 0.15);
+  --logo: #ff008c;
+  --up: #2be38b;
+  --up-soft: rgba(43, 227, 139, 0.12);
+  --down: #ff4466;
+  --down-soft: rgba(255, 68, 102, 0.13);
   --warn: #ffb547;
   --warn-soft: rgba(255, 181, 71, 0.14);
-  --card-glow: rgba(153, 69, 255, 0.6);
-  --card-base: #0e0d16;
-  --card-ink: #000000;
+  --card-glow: rgba(255, 0, 140, 0.55);
+  --card-base: #140a10;
+  --card-ink: #090909;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
   --f-display: 'Bricolage Grotesque', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
   --f-body: 'Figtree', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -84,11 +83,8 @@ p { margin: 0; }
   border-right: 1px solid var(--line);
 }
 .brand { background: none; border: 0; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 2px; }
-.brand-mark {
-  font-family: var(--f-display); font-weight: 800; font-size: 1.9rem; letter-spacing: -0.045em; line-height: 1;
-  color: var(--logo);
-}
-.brand-mark::after { content: '.'; color: var(--fg); }
+.brand-mark { display: block; height: 34px; width: auto; }
+.brand-emblem { display: block; height: 34px; width: 34px; border-radius: 9px; }
 .brand-sub { font-size: 0.74rem; color: var(--muted); letter-spacing: 0.04em; }
 .rail-nav { display: flex; flex-direction: column; gap: 4px; }
 .rail-nav button {
@@ -143,7 +139,7 @@ p { margin: 0; }
 .seg { display: inline-flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px; max-width: 100%; overflow-x: auto; scrollbar-width: none; align-self: flex-start; }
 .seg::-webkit-scrollbar { display: none; }
 .seg button { border: 0; background: none; padding: 7px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; font-size: 0.88rem; white-space: nowrap; }
-.seg button.on { background: var(--fg); color: var(--ink); }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg-sm button { padding: 6px 12px; font-size: 0.82rem; }
 .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .chip-btn { border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; padding: 7px 13px; font-weight: 700; font-size: 0.86rem; }
@@ -343,11 +339,10 @@ textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
 .share { gap: 16px; }
 .pnl-card {
   border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 6px; color: #fff; position: relative; overflow: hidden;
-  background: radial-gradient(90% 70% at 0% 100%, rgba(20, 241, 149, 0.35) 0%, transparent 60%), radial-gradient(120% 90% at 100% 0%, var(--card-glow) 0%, var(--card-base) 52%, var(--card-ink) 100%);
+  background: radial-gradient(90% 70% at 0% 100%, rgba(255, 255, 255, 0.10) 0%, transparent 60%), radial-gradient(120% 90% at 100% 0%, var(--card-glow) 0%, var(--card-base) 52%, var(--card-ink) 100%);
 }
 .pnl-card.is-down { background: radial-gradient(120% 90% at 100% 0%, rgba(255, 92, 122, 0.6) 0%, var(--card-base) 52%, var(--card-ink) 100%); }
-.pnl-card .brand-mark { color: var(--logo); font-size: 1.4rem; }
-.pnl-card .brand-mark::after { color: #fff; }
+.pnl-card .brand-mark { height: 26px; }
 .pnl-big { font-size: clamp(2.6rem, 11vw, 3.6rem); line-height: 1.05; margin-top: 14px; letter-spacing: -0.05em; }
 .pnl-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.25); }
 .pnl-row div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -388,7 +383,7 @@ textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
     padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
     background: color-mix(in srgb, var(--ink) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
   }
-  .topbar .brand-mark { font-size: 1.55rem; }
+  .topbar .brand-mark { height: 28px; }
   .topbar-cash { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 5px 10px; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
   .main { padding-block: 16px 110px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .view-head, .coin-head { padding-right: 0; }
@@ -522,3 +517,32 @@ a.link { text-decoration: none; }
   .changes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tabbar { grid-template-columns: repeat(5, 1fr); }
 }
+
+/* ---------- BAGZ chart (Lightweight Charts) ---------- */
+.chart-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lw { position: relative; min-width: 0; }
+.lw-box { width: 100%; touch-action: pan-y; border-radius: var(--r-s); overflow: hidden; }
+.lw-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78rem; min-height: 22px; padding: 2px 2px 6px; color: var(--muted); }
+.lw-legend b { color: var(--fg); font-weight: 600; }
+.lw-tools { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
+.lw-loading { position: absolute; inset: 40px 0 0; display: grid; place-items: center; background: color-mix(in srgb, var(--ink) 70%, transparent); }
+.lw-fallback { display: flex; flex-direction: column; gap: 6px; }
+.chart-panel .chart-empty { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 18px; }
+.chart-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.chart-note { margin: 0; }
+
+/* ---------- provider health ---------- */
+.health { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.health li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.health li:first-child { border-top: 0; }
+.health .hl-name { display: flex; flex-direction: column; min-width: 0; }
+.health .hl-err { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.health .hl-meta { text-align: right; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.hdot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.hdot-ok { background: var(--up); box-shadow: 0 0 0 3px var(--up-soft); }
+.hdot-stale, .hdot-rate-limited { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.hdot-down { background: var(--down); box-shadow: 0 0 0 3px var(--down-soft); }
+.hgroup { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 10px 0 0; display: flex; gap: 8px; align-items: center; }
+.pill-unofficial { background: var(--warn-soft); color: var(--warn); }
+button.source { background: none; border: 0; padding: 0; text-align: left; }
+button.source:hover { color: var(--fg); }

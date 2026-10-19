@@ -1,0 +1,18 @@
+name = "bagz-proxy"
+main = "index.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# comma-separated list of sites allowed to call the proxy from a browser
+ALLOWED_ORIGINS = "https://arielgutierrez15.github.io"
+# set to "1" only while developing locally
+ALLOW_LOCALHOST = "0"
+# per-IP requests per minute per Worker instance (best effort; also add a Cloudflare rate-limiting rule)
+RATE_PER_MIN = "240"
+# "demo" (default, 100 calls/min) or "pro" when COINGECKO_API_KEY is a paid key
+COINGECKO_PLAN = "demo"
+
+# Secrets are NOT stored here. Add them with:
+#   npx wrangler secret put JUPITER_API_KEY      (free key from developers.jup.ag/portal)
+#   npx wrangler secret put COINGECKO_API_KEY    (optional; raises GeckoTerminal limits)
+#   npx wrangler secret put SOLANA_RPC_URL       (optional; your Helius/QuickNode/etc. endpoint)

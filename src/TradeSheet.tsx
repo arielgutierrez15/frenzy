@@ -3,6 +3,7 @@ import type { Side } from './types';
 import { useStore, act, emit, getState } from './store';
 import { useNav, TradeIntent } from './nav';
 import { CoinBadge, Icon, Change } from './ui';
+import { Wordmark } from './brand';
 import { quote, userTrade, placeOrder, change24, mcapOf, userStats, scoreCoin, refreshOne, FEE_RATE } from './engine';
 import { ago, compact, pct, price as fmtPrice, qty as fmtQty, usd, signedUsd } from './format';
 
@@ -183,12 +184,12 @@ export function ShareCard({ onClose }: { onClose: () => void }) {
     const all = [...rows.map((x) => ({ sym: x.c.symbol, r: x.r })), ...sells.map((x) => ({ sym: x.sym, r: x.r }))];
     return all.sort((a, b) => b.r - a.r)[0];
   }, [s.equity, st.user.trades.length]);
-  const text = `My Frenzy paper wallet: ${usd(s.equity)} (${pct(s.pnlPct, 2)}). Win rate ${s.sells ? s.winRate.toFixed(0) + '%' : 'n/a'}.${best ? ` Best play: $${best.sym} ${pct(best.r * 100, 0)}.` : ''}`;
+  const text = `My BAGZ paper wallet: ${usd(s.equity)} (${pct(s.pnlPct, 2)}). Win rate ${s.sells ? s.winRate.toFixed(0) + '%' : 'n/a'}.${best ? ` Best play: $${best.sym} ${pct(best.r * 100, 0)}.` : ''}`;
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet share" role="dialog" aria-modal="true" aria-label="Share PnL" onClick={(e) => e.stopPropagation()}>
         <div className={`pnl-card ${s.pnl >= 0 ? 'is-up' : 'is-down'}`}>
-          <div className="row"><span className="brand-mark">frenzy</span><span className="grow" /><span className="small">paper wallet</span></div>
+          <div className="row"><Wordmark /><span className="grow" /><span className="small">paper wallet</span></div>
           <b className="pnl-big num">{pct(s.pnlPct, 2)}</b>
           <span className="num">{signedUsd(s.pnl)} on {usd(st.user.deposits, 0)} deposited</span>
           <div className="pnl-row">

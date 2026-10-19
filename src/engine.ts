@@ -1,17 +1,23 @@
 import type {
-  Audit, Candle, Chain, ChainTrade, Coin, Notif, Order, Side, SourceId, SourceStatus, State, Trade, WalletSeen,
+  Audit, Chain, ChainTrade, Coin, Notif, Order, Side, SourceId, SourceStatus, State, Trade, WalletSeen,
 } from './types';
 import { MAJORS, NARRATIVES } from './seed';
 import { SNAPSHOT_AT, JUPITER as SNAP_JUP, PUMP_LIVE as SNAP_PUMP, DEXSCREENER as SNAP_DS, BOOSTS as SNAP_BOOSTS } from './snapshot';
 import { compact, pct, price as fmtPrice } from './format';
+import { request, queueDepth } from './providers/http';
+import { SOURCE_LABELS as LABELS, type SourceId as ProviderSource } from './providers/registry';
+import {
+  parseJupiterTokens, parseJupiterPrice, parseDexProfiles, parseDexPairs, parseGtPools, parseGtTrades as parseGtTradeRows,
+  parsePumpCoins, parseRugSummary, parseRpc, type PumpCoin,
+} from './providers/adapters';
 
 export const START_CASH = 10_000;
 export const FEE_RATE = 0.005; // 0.5% simulated swap fee on paper trades
 export const PRICE_REFRESH_MS = 20_000;
 export const DISCOVERY_REFRESH_MS = 60_000;
-export const TAPE_REFRESH_MS = 30_000;
+export const TAPE_REFRESH_MS = 45_000;
 const STALE_MS = 60_000; // paper trades only fill on a price fetched in the last minute
-const STORAGE_KEY = 'frenzy.live.v1';
+const STORAGE_KEY = 'frenzy.live.v1'; // key kept from the Frenzy era so existing paper wallets survive the BAGZ rename
 const STATE_VERSION = 10;
 
 let idSeq = 0;
@@ -28,47 +34,24 @@ const GT_TO_CHAIN: Record<string, Chain> = { solana: 'solana', eth: 'ethereum', 
 // ======================================================================
 // sources
 // ======================================================================
-export const SOURCE_LABELS: Record<SourceStatus['id'], string> = {
-  'ds-pairs': 'DexScreener prices',
-  'ds-profiles': 'DexScreener new listings',
-  'ds-boosts': 'DexScreener boosts',
-  'jup-recent': 'Jupiter new tokens',
-  'jup-trending': 'Jupiter trending',
-  'jup-organic': 'Jupiter organic score',
-  'jup-traded': 'Jupiter most traded',
-  'gt-new': 'GeckoTerminal new pools',
-  'gt-trending': 'GeckoTerminal trending',
-  'gt-ohlcv': 'GeckoTerminal candles',
-  'gt-trades': 'GeckoTerminal trades',
-  pumpfun: 'pump.fun new coins',
-  'gt-pools': 'GeckoTerminal pool lookup',
-  'jup-search': 'Jupiter token details',
-  'jup-price': 'Jupiter SOL price',
-  rugcheck: 'RugCheck report',
-  'pump-live': 'pump.fun livestreams',
-  'sol-rpc': 'Solana RPC holders',
-  major: 'Blue-chip list',
-};
+export const SOURCE_LABELS = LABELS;
 
-async function getJSON(st: State, id: SourceStatus['id'], url: string, init?: RequestInit): Promise<any | undefined> {
+interface CallOpts<T> { method?: 'GET' | 'POST'; body?: unknown; prio?: 0 | 1 | 2; force?: boolean; ttlMs?: number; validate?: (j: unknown) => T }
+/**
+ * One provider call through the shared HTTP core (cache, de-dupe, rate limit, retry, validation).
+ * Updates the visible source status with the real fetch time, so "updated Ns ago" is the provider's data age.
+ */
+export async function getJSON<T = any>(st: State, id: ProviderSource, path: string, o: CallOpts<T> = {}): Promise<T | undefined> {
   const s = (st.sources[id] ||= { id, label: SOURCE_LABELS[id], ok: null });
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 9000);
-  try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    s.ok = true; s.at = Date.now(); s.error = undefined;
-    return json;
-  } catch (e: any) {
-    s.ok = false; s.at = Date.now();
-    s.error = e?.name === 'AbortError' ? 'Timed out' : e?.message === 'Failed to fetch' ? 'Blocked or offline' : String(e?.message || e);
-    return undefined;
-  } finally {
-    clearTimeout(timer);
+  const r = await request<T>({ source: id, path, ...o });
+  if (r.ok) {
+    s.ok = true; s.at = r.fetchedAt; s.error = undefined; s.stale = r.stale; s.via = r.via; s.ms = r.ms || s.ms;
+    return r.data;
   }
+  s.ok = false; s.at = Date.now(); s.stale = false; s.kind = r.error.kind;
+  s.error = r.error.message;
+  return undefined;
 }
-
 function countSource(st: State, id: SourceStatus['id'], n: number) {
   const s = st.sources[id];
   if (s) s.count = n;
@@ -109,12 +92,12 @@ function upsert(st: State, p: Patch, source?: SourceId): Coin {
   return c;
 }
 
-function recordPrice(st: State, c: Coin, price: number, liq: number) {
+function recordPrice(st: State, c: Coin, price: number, liq: number, at = Date.now()) {
   const now = Date.now();
   c.price = price;
-  c.updatedAt = now;
+  c.updatedAt = at; // when the provider produced this price, so cached answers never look fresher than they are
   const last = c.spark[c.spark.length - 1];
-  if (!last || now - last.t > 5000) c.spark.push({ t: now, p: price });
+  if (!last || at - last.t > 5000) c.spark.push({ t: at, p: price });
   if (c.spark.length > 180) c.spark.splice(0, c.spark.length - 180);
   if (price > c.peakPrice) c.peakPrice = price;
   if (liq > c.peakLiq) c.peakLiq = liq;
@@ -237,7 +220,7 @@ function linksFrom(arr: any[] | undefined): { type: string; url: string }[] {
 }
 
 async function fetchDsProfiles(st: State) {
-  const j = await getJSON(st, 'ds-profiles', 'https://api.dexscreener.com/token-profiles/latest/v1');
+  const j = await getJSON(st, 'ds-profiles', '/token-profiles/latest/v1', { validate: parseDexProfiles, prio: 2 });
   if (!Array.isArray(j)) return;
   let n = 0;
   for (const t of j) {
@@ -250,7 +233,7 @@ async function fetchDsProfiles(st: State) {
 }
 
 async function fetchDsBoosts(st: State) {
-  const j = await getJSON(st, 'ds-boosts', 'https://api.dexscreener.com/token-boosts/top/v1');
+  const j = await getJSON(st, 'ds-boosts', '/token-boosts/top/v1', { validate: parseDexProfiles, prio: 2 });
   if (!Array.isArray(j)) return;
   let n = 0;
   for (const t of j) {
@@ -262,14 +245,14 @@ async function fetchDsBoosts(st: State) {
   countSource(st, 'ds-boosts', n);
 }
 
-function fromJupiter(st: State, t: any, source?: SourceId) {
+function fromJupiter(st: State, t: any, source?: SourceId, at = Date.now()) {
   if (!t?.id || notMeme(st, 'solana', t.id, t.tags)) return;
   const s24 = t.stats24h || {}, s1 = t.stats1h || {}, s5 = t.stats5m || {}, s6 = t.stats6h || {};
   const a = t.audit || {};
   const links: { type: string; url: string }[] = [];
   for (const k of ['website', 'twitter', 'telegram']) if (typeof t[k] === 'string' && t[k]) links.push({ type: k, url: t[k] });
   const c = upsert(st, {
-    chain: 'solana', address: t.id, symbol: t.symbol, name: t.name, icon: t.icon, launchpad: t.launchpad,
+    chain: 'solana', address: t.id, symbol: t.symbol, name: t.name, icon: t.icon, decimals: num(t.decimals), launchpad: t.launchpad,
     mcap: num(t.mcap) ?? num(t.fdv), liq: num(t.liquidity), holders: num(t.holderCount),
     vol24: (num(s24.buyVolume) ?? 0) + (num(s24.sellVolume) ?? 0) || undefined,
     vol1h: (num(s1.buyVolume) ?? 0) + (num(s1.sellVolume) ?? 0) || undefined,
@@ -281,17 +264,18 @@ function fromJupiter(st: State, t: any, source?: SourceId) {
     links: links.length ? links : undefined,
   }, source);
   const p = num(t.usdPrice);
-  if (p && p > 0) recordPrice(st, c, p, c.liq);
+  if (p && p > 0) recordPrice(st, c, p, c.liq, at);
 }
 
 async function fetchJupiter(st: State, id: 'jup-recent' | 'jup-trending' | 'jup-organic' | 'jup-traded', path: string) {
-  const j = await getJSON(st, id, `https://lite-api.jup.ag/tokens/v2/${path}`);
+  const j = await getJSON(st, id, `/tokens/v2/${path}`, { validate: parseJupiterTokens, prio: 2 });
   if (!Array.isArray(j)) return;
-  j.forEach((t) => fromJupiter(st, t, id));
+  const at = st.sources[id]?.at;
+  j.forEach((t) => fromJupiter(st, t, id, at));
   countSource(st, id, j.length);
 }
 
-function fromGtPool(st: State, pool: any, included: Map<string, any>, source: SourceId) {
+function fromGtPool(st: State, pool: any, included: Map<string, any>, source: SourceId, fetchedAt = Date.now()) {
   const at = pool?.attributes || {};
   const net = String(pool?.id || '').split('_')[0];
   const chain = GT_TO_CHAIN[net];
@@ -310,54 +294,56 @@ function fromGtPool(st: State, pool: any, included: Map<string, any>, source: So
     createdAt: Date.parse(at.pool_created_at) || undefined,
   }, source);
   const p = num(at.base_token_price_usd);
-  if (p && p > 0) recordPrice(st, c, p, c.liq);
+  if (p && p > 0) recordPrice(st, c, p, c.liq, fetchedAt);
 }
 
 async function fetchGt(st: State, id: 'gt-new' | 'gt-trending', path: string) {
-  const j = await getJSON(st, id, `https://api.geckoterminal.com/api/v2/${path}${path.includes('?') ? '&' : '?'}include=base_token`, { headers: { accept: 'application/json' } });
-  if (!j || !Array.isArray(j.data)) return;
-  const included = new Map<string, any>((j.included || []).map((x: any) => [x.id, x]));
-  j.data.forEach((p: any) => fromGtPool(st, p, included, id));
+  const j = await getJSON(st, id, `/${path}${path.includes('?') ? '&' : '?'}include=base_token`, { validate: parseGtPools, prio: 2 });
+  if (!j) return;
+  const included = new Map<string, any>(j.included.map((x: any) => [x.id, x]));
+  const fetchedAt = st.sources[id]?.at;
+  j.data.forEach((p: any) => fromGtPool(st, p, included, id, fetchedAt));
   countSource(st, id, (st.sources[id]?.count || 0) + j.data.length);
 }
 
 /** pump.fun coins all have a 1,000,000,000 token supply, so price = USD market cap / 1e9. */
 const PUMP_SUPPLY = 1_000_000_000;
 
-function fromPumpFun(st: State, t: any, source: 'pumpfun' | 'pump-live') {
-  if (!t?.mint) return;
-  const links = [['website', t.website], ['twitter', t.twitter], ['telegram', t.telegram]].filter(([, u]) => typeof u === 'string' && u).map(([type, url]) => ({ type, url }));
+function fromPumpFun(st: State, t: PumpCoin, source: 'pumpfun' | 'pump-live', at = Date.now()) {
+  const links = [['website', t.website], ['twitter', t.twitter], ['telegram', t.telegram]].filter(([, u]) => typeof u === 'string' && u).map(([type, url]) => ({ type: type as string, url: url as string }));
   const c = upsert(st, {
-    chain: 'solana', address: t.mint, symbol: t.symbol, name: t.name, description: t.description, icon: t.image_uri, launchpad: 'pump.fun',
-    mcap: num(t.usd_market_cap), createdAt: num(t.created_timestamp), links: links.length ? links : undefined,
-    liq: num(t.canonical_pool_liquidity_usd),
-    pumpComplete: typeof t.complete === 'boolean' ? t.complete : undefined,
-    pumpLive: typeof t.is_currently_live === 'boolean' ? t.is_currently_live : source === 'pump-live' ? true : undefined,
+    chain: 'solana', address: t.mint, symbol: t.symbol, name: t.name, description: t.description, icon: t.image, launchpad: 'pump.fun',
+    mcap: t.marketCapUsd, createdAt: t.createdAtMs, links: links.length ? links : undefined,
+    liq: t.liquidityUsd,
+    pumpComplete: t.complete,
+    pumpLive: t.isLive !== undefined ? t.isLive : source === 'pump-live' ? true : undefined,
   }, source);
   // pump.fun reports market cap, not price; use it only until DexScreener prices the pair
-  const mc = num(t.usd_market_cap);
-  if (mc && mc > 0 && !(c.updatedAt && Date.now() - c.updatedAt < STALE_MS)) recordPrice(st, c, mc / PUMP_SUPPLY, c.liq);
+  const mc = t.marketCapUsd;
+  if (mc && mc > 0 && !(c.updatedAt && Date.now() - c.updatedAt < STALE_MS)) recordPrice(st, c, mc / PUMP_SUPPLY, c.liq, at);
 }
 
 async function fetchPumpFun(st: State) {
-  const j = await getJSON(st, 'pumpfun', 'https://frontend-api-v3.pump.fun/coins?offset=0&limit=30&sort=created_timestamp&order=DESC&includeNsfw=false');
-  if (!Array.isArray(j)) return;
-  j.forEach((t) => fromPumpFun(st, t, 'pumpfun'));
+  const j = await getJSON(st, 'pumpfun', '/coins?offset=0&limit=30&sort=created_timestamp&order=DESC&includeNsfw=false', { validate: parsePumpCoins, prio: 2 });
+  if (!j) return;
+  const at = st.sources.pumpfun?.at;
+  j.forEach((t) => fromPumpFun(st, t, 'pumpfun', at));
   countSource(st, 'pumpfun', j.length);
 }
 
 async function fetchPumpLive(st: State) {
-  const j = await getJSON(st, 'pump-live', 'https://frontend-api-v3.pump.fun/coins/currently-live?limit=50&offset=0&includeNsfw=false');
-  if (!Array.isArray(j)) return;
+  const j = await getJSON(st, 'pump-live', '/coins/currently-live?limit=50&offset=0&includeNsfw=false', { validate: parsePumpCoins, prio: 2 });
+  if (!j) return;
   // coins that stopped streaming drop out of the live category
-  const live = new Set(j.map((t: any) => t?.mint).filter(Boolean));
+  const live = new Set(j.map((t) => t.mint));
   for (const c of Object.values(st.coins)) if (c.pumpLive && !live.has(c.address)) c.pumpLive = false;
-  j.forEach((t) => fromPumpFun(st, t, 'pump-live'));
+  const at = st.sources['pump-live']?.at;
+  j.forEach((t) => fromPumpFun(st, t, 'pump-live', at));
   countSource(st, 'pump-live', j.length);
 }
 
 /** Batch price refresh from DexScreener for the coins on screen, in positions, or on the radar. */
-async function refreshPairs(st: State, ids: string[]) {
+async function refreshPairs(st: State, ids: string[], o: { force?: boolean; prio?: 0 | 1 | 2 } = {}) {
   const byChain: Record<string, string[]> = {};
   for (const id of ids) {
     const c = st.coins[id];
@@ -367,8 +353,9 @@ async function refreshPairs(st: State, ids: string[]) {
   let n = 0;
   for (const [chain, addrs] of Object.entries(byChain)) {
     for (let i = 0; i < addrs.length; i += 30) {
-      const j = await getJSON(st, 'ds-pairs', `https://api.dexscreener.com/tokens/v1/${chain}/${addrs.slice(i, i + 30).join(',')}`);
-      if (!Array.isArray(j)) continue;
+      const j = await getJSON(st, 'ds-pairs', `/tokens/v1/${chain}/${addrs.slice(i, i + 30).join(',')}`, { validate: parseDexPairs, prio: o.prio ?? 1, force: o.force });
+      if (!j) continue;
+      const fetchedAt = st.sources['ds-pairs']?.at ?? Date.now();
       const best: Record<string, any> = {};
       for (const p of j) {
         const a = p?.baseToken?.address;
@@ -388,7 +375,7 @@ async function refreshPairs(st: State, ids: string[]) {
           dexId: p.dexId, pairAddress: p.pairAddress, createdAt: c.createdAt ?? num(p.pairCreatedAt), links: links.length ? links : undefined,
         });
         const price = num(p.priceUsd);
-        if (price && price > 0) { recordPrice(st, c, price, num(p.liquidity?.usd) ?? c.liq); n++; }
+        if (price && price > 0) { recordPrice(st, c, price, num(p.liquidity?.usd) ?? c.liq, fetchedAt); n++; }
       }
     }
   }
@@ -400,21 +387,9 @@ async function refreshPairs(st: State, ids: string[]) {
 // ======================================================================
 export interface RugReport { score?: number; risks: { name: string; level: string; description?: string }[] }
 export const detail: Record<string, {
-  candles?: Candle[]; candlesAt?: number; candlesTf?: Timeframe; candlesError?: string;
   trades?: ChainTrade[]; tradesAt?: number; holders?: { address: string; pct: number }[]; holdersAt?: number; holdersError?: string;
   poolTried?: boolean; detailsAt?: number; rug?: RugReport; rugError?: string;
 }> = {};
-
-/** Chart timeframes, mapped onto GeckoTerminal's OHLCV endpoint (period + aggregate). */
-export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
-export const TIMEFRAMES: { id: Timeframe; label: string; period: 'minute' | 'hour' | 'day'; agg: number; ms: number }[] = [
-  { id: '1m', label: '1m', period: 'minute', agg: 1, ms: 60_000 },
-  { id: '5m', label: '5m', period: 'minute', agg: 5, ms: 300_000 },
-  { id: '15m', label: '15m', period: 'minute', agg: 15, ms: 900_000 },
-  { id: '1h', label: '1H', period: 'hour', agg: 1, ms: 3_600_000 },
-  { id: '4h', label: '4H', period: 'hour', agg: 4, ms: 14_400_000 },
-  { id: '1d', label: '1D', period: 'day', agg: 1, ms: 86_400_000 },
-];
 
 /** Coins found on pump.fun or Jupiter may not have a DexScreener pair yet: ask GeckoTerminal for the token's busiest pool. */
 export async function ensurePool(st: State, c: Coin) {
@@ -422,25 +397,11 @@ export async function ensurePool(st: State, c: Coin) {
   const d = (detail[c.id] ||= {});
   if (d.poolTried) return;
   d.poolTried = true;
-  const j = await getJSON(st, 'gt-pools', `https://api.geckoterminal.com/api/v2/networks/${GT_NET[c.chain]}/tokens/${c.address}/pools?page=1`, { headers: { accept: 'application/json' } });
-  const top = Array.isArray(j?.data) ? j.data[0] : undefined;
+  const j = await getJSON(st, 'gt-pools', `/networks/${GT_NET[c.chain]}/tokens/${c.address}/pools?page=1`, { validate: parseGtPools, prio: 0 });
+  if (!j) { d.poolTried = false; return; } // let the next open try again instead of caching a failure
+  const top = j.data[0];
   const addr = top?.attributes?.address;
   if (addr) upsert(st, { chain: c.chain, address: c.address, pairAddress: addr, dexId: c.dexId ?? top?.relationships?.dex?.data?.id?.replace('pump-fun', 'pumpfun') });
-}
-
-export async function loadCandles(st: State, c: Coin, tf: Timeframe = '1m', force = false) {
-  await ensurePool(st, c);
-  if (!c.pairAddress) return;
-  const d = (detail[c.id] ||= {});
-  if (!force && d.candlesTf === tf && d.candlesAt && Date.now() - d.candlesAt < 30_000) return;
-  d.candlesAt = Date.now();
-  const f = TIMEFRAMES.find((x) => x.id === tf) || TIMEFRAMES[0];
-  const j = await getJSON(st, 'gt-ohlcv', `https://api.geckoterminal.com/api/v2/networks/${GT_NET[c.chain]}/pools/${c.pairAddress}/ohlcv/${f.period}?aggregate=${f.agg}&limit=300&currency=usd&token=base`, { headers: { accept: 'application/json' } });
-  const list = j?.data?.attributes?.ohlcv_list;
-  if (!Array.isArray(list)) { d.candlesError = st.sources['gt-ohlcv']?.error || 'No candles returned'; return; }
-  d.candlesError = undefined;
-  d.candlesTf = tf;
-  d.candles = list.map((r: number[]) => ({ t: r[0] * 1000, o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[5] })).filter((k: Candle) => k.c > 0).sort((a: Candle, b: Candle) => a.t - b.t);
 }
 
 /**
@@ -453,12 +414,12 @@ export async function loadDetails(st: State, c: Coin) {
   d.detailsAt = Date.now();
   if (c.chain !== 'solana') return;
   const [jup, rug] = await Promise.all([
-    getJSON(st, 'jup-search', `https://lite-api.jup.ag/tokens/v2/search?query=${c.address}`),
-    getJSON(st, 'rugcheck', `https://api.rugcheck.xyz/v1/tokens/${c.address}/report/summary`),
+    getJSON(st, 'jup-search', `/tokens/v2/search?query=${c.address}`, { validate: parseJupiterTokens, prio: 0 }),
+    getJSON(st, 'rugcheck', `/v1/tokens/${c.address}/report/summary`, { validate: parseRugSummary, prio: 1 }),
   ]);
-  const t = Array.isArray(jup) ? jup.find((x: any) => x?.id === c.address) : undefined;
-  if (t) fromJupiter(st, t);
-  if (rug && Array.isArray(rug.risks)) {
+  const t = jup?.find((x: any) => x?.id === c.address);
+  if (t) fromJupiter(st, t, undefined, st.sources['jup-search']?.at);
+  if (rug) {
     d.rug = { score: num(rug.score_normalised) ?? num(rug.score), risks: rug.risks.map((r: any) => ({ name: String(r.name || ''), level: String(r.level || 'info'), description: r.description ? String(r.description) : undefined })).filter((r: any) => r.name) };
     d.rugError = undefined;
   } else d.rugError = st.sources.rugcheck?.error || 'No report';
@@ -466,43 +427,33 @@ export async function loadDetails(st: State, c: Coin) {
 
 /** Fetch a fresh price for one coin right before a trade, so fills use the market as it is now. */
 export async function refreshOne(st: State, id: string) {
-  await refreshPairs(st, [id]);
+  // the trade ticket is open and the user is waiting: bypass the cache and jump the rate-limit queue
+  await refreshPairs(st, [id], { force: true, prio: 0 });
   const c = st.coins[id];
   if (c && c.chain === 'solana' && (!c.updatedAt || Date.now() - c.updatedAt > 20_000)) {
-    const j = await getJSON(st, 'jup-search', `https://lite-api.jup.ag/tokens/v2/search?query=${c.address}`);
-    const t = Array.isArray(j) ? j.find((x: any) => x?.id === c.address) : undefined;
-    if (t) fromJupiter(st, t);
+    const j = await getJSON(st, 'jup-search', `/tokens/v2/search?query=${c.address}`, { validate: parseJupiterTokens, prio: 0, force: true });
+    const t = j?.find((x: any) => x?.id === c.address);
+    if (t) fromJupiter(st, t, undefined, st.sources['jup-search']?.at);
   }
   afterPrices(st);
 }
 
 export async function refreshSol(st: State) {
   const SOL = 'So11111111111111111111111111111111111111112';
-  const j = await getJSON(st, 'jup-price', `https://lite-api.jup.ag/price/v3?ids=${SOL}`);
-  const p = num(j?.[SOL]?.usdPrice);
+  const j = await getJSON(st, 'jup-price', `/price/v3?ids=${SOL}`, { validate: parseJupiterPrice, prio: 1 });
+  const p = j?.[SOL]?.usdPrice;
   if (p) st.solPrice = p;
 }
 
-function parseGtTrades(st: State, c: Coin, j: any): ChainTrade[] {
-  if (!Array.isArray(j?.data)) return [];
-  return j.data.map((x: any) => {
-    const a = x.attributes || {};
-    const side: Side = a.kind === 'sell' ? 'SELL' : 'BUY';
-    return {
-      id: a.tx_hash || x.id, t: Date.parse(a.block_timestamp) || Date.now(), coinId: c.id, wallet: a.tx_from_address || '',
-      side, usd: num(a.volume_in_usd) ?? 0, price: (side === 'BUY' ? num(a.price_to_in_usd) : num(a.price_from_in_usd)) ?? c.price,
-    } as ChainTrade;
-  }).filter((t: ChainTrade) => t.wallet && t.usd > 0);
-}
-
-export async function loadTrades(st: State, c: Coin) {
+export async function loadTrades(st: State, c: Coin, prio: 0 | 1 | 2 = 1) {
   if (!c.pairAddress) return;
   const d = (detail[c.id] ||= {});
   if (d.tradesAt && Date.now() - d.tradesAt < 20_000) return;
   d.tradesAt = Date.now();
-  const j = await getJSON(st, 'gt-trades', `https://api.geckoterminal.com/api/v2/networks/${GT_NET[c.chain]}/pools/${c.pairAddress}/trades`, { headers: { accept: 'application/json' } });
-  const trades = parseGtTrades(st, c, j);
-  if (j) d.trades = trades;
+  const rows = await getJSON(st, 'gt-trades', `/networks/${GT_NET[c.chain]}/pools/${c.pairAddress}/trades`, { validate: parseGtTradeRows, prio });
+  if (!rows) { d.tradesAt = 0; return; } // failed: allow a retry on the next poll
+  const trades: ChainTrade[] = rows.map((r) => ({ id: r.id, t: r.tsMs, coinId: c.id, wallet: r.wallet, side: r.side, usd: r.usd, price: r.priceUsd ?? c.price }));
+  d.trades = trades;
   ingestTape(st, trades);
 }
 
@@ -511,15 +462,14 @@ export async function loadHolders(st: State, c: Coin) {
   const d = (detail[c.id] ||= {});
   if (d.holdersAt && Date.now() - d.holdersAt < 120_000) return;
   d.holdersAt = Date.now();
-  const body = (method: string, params: any[]) => JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
-  const init = (b: string): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: b });
+  const body = (method: string, params: any[]) => ({ jsonrpc: '2.0', id: 1, method, params });
   const [largest, supply] = await Promise.all([
-    getJSON(st, 'sol-rpc', 'https://api.mainnet-beta.solana.com', init(body('getTokenLargestAccounts', [c.address]))),
-    getJSON(st, 'sol-rpc', 'https://api.mainnet-beta.solana.com', init(body('getTokenSupply', [c.address]))),
+    getJSON(st, 'sol-rpc', '', { method: 'POST', body: body('getTokenLargestAccounts', [c.address]), validate: parseRpc, prio: 1 }),
+    getJSON(st, 'sol-rpc', '', { method: 'POST', body: body('getTokenSupply', [c.address]), validate: parseRpc, prio: 1 }),
   ]);
   const total = num(supply?.result?.value?.uiAmount);
   const rows = largest?.result?.value;
-  if (!Array.isArray(rows) || !total) { d.holdersError = largest?.error?.message || 'The public Solana RPC refused the request.'; return; }
+  if (!Array.isArray(rows) || !total) { d.holdersError = st.sources['sol-rpc']?.error || 'The Solana RPC returned no holders.'; d.holdersAt = 0; return; }
   d.holders = rows.map((r: any) => ({ address: r.address, pct: ((num(r.uiAmount) ?? 0) / total) * 100 }));
   d.holdersError = undefined;
 }
@@ -559,8 +509,12 @@ async function refreshTape(st: State, focus?: string) {
   if (focus) add(st.coins[focus]);
   Object.keys(st.user.positions).forEach((id) => add(st.coins[id]));
   const hot = Object.values(st.coins).filter((c) => c.price > 0 && c.pairAddress).sort((a, b) => (b.vol1h ?? 0) - (a.vol1h ?? 0));
-  for (const c of hot) { if (picks.length >= 3) break; add(c); }
-  for (const c of picks.slice(0, 3)) await loadTrades(st, c);
+  for (const c of hot) { if (picks.length >= 2) break; add(c); }
+  // GeckoTerminal's keyless budget is ~10 calls/min: poll only the coin on screen when its queue is busy
+  for (const c of picks.slice(0, 2)) {
+    if (c.id !== focus && queueDepth('gt') > 1) continue;
+    await loadTrades(st, c, c.id === focus ? 0 : 2);
+  }
 }
 
 // ======================================================================
@@ -761,8 +715,8 @@ export function loadSnapshot(st: State) {
       audit: { mintAuthorityDisabled: mintOff ?? undefined, freezeAuthorityDisabled: freezeOff ?? undefined, topHoldersPercentage: top, devBalancePercentage: dev },
     }, listSource[list]);
   }
-  for (const [mint, name, symbol, image_uri, usd_market_cap, created_timestamp, complete, canonical_pool_liquidity_usd, twitter, telegram, website] of SNAP_PUMP) {
-    fromPumpFun(st, { mint, name, symbol, image_uri, usd_market_cap, created_timestamp, complete, canonical_pool_liquidity_usd, twitter, telegram, website, is_currently_live: true }, 'pump-live');
+  for (const [mint, name, symbol, image, marketCapUsd, createdAtMs, complete, liquidityUsd, twitter, telegram, website] of SNAP_PUMP) {
+    fromPumpFun(st, { mint, name, symbol, image, marketCapUsd, createdAtMs, complete, liquidityUsd, twitter: twitter ?? undefined, telegram: telegram ?? undefined, website: website ?? undefined, isLive: true }, 'pump-live', SNAPSHOT_AT);
   }
   for (const [chain, address, name, symbol, pairAddress, dexId, price, h1, h24, vol, buys, sells, liq, mcap, created] of SNAP_DS) {
     const c = upsert(st, { chain, address, name, symbol, pairAddress, dexId, mcap, liq, vol24: vol, buys24: buys, sells24: sells, change: { h1, h24 }, createdAt: created });
@@ -861,19 +815,19 @@ export function exportWallet(st: State): string {
   const keep = new Set<string>([...Object.keys(st.user.positions), ...st.user.orders.map((o) => o.coinId), ...st.user.trades.map((t) => t.coinId), ...st.user.theses.map((t) => t.coinId)]);
   const coins: Record<string, Coin> = {};
   keep.forEach((id) => { const c = st.coins[id]; if (c) coins[id] = { ...c, spark: c.spark.slice(-20) }; });
-  return JSON.stringify({ app: 'frenzy', v: STATE_VERSION, exportedAt: new Date().toISOString(), user: st.user, settings: st.settings, coins }, null, 1);
+  return JSON.stringify({ app: 'bagz', v: STATE_VERSION, exportedAt: new Date().toISOString(), user: st.user, settings: st.settings, coins }, null, 1);
 }
 
 export function importWallet(st: State, text: string): { ok: boolean; message: string } {
   try {
     const j = JSON.parse(text);
     const u = j?.user;
-    if (j?.app !== 'frenzy' || !u || typeof u.cash !== 'number' || !Array.isArray(u.trades) || typeof u.positions !== 'object') return { ok: false, message: 'That file isn’t a Frenzy wallet backup.' };
+    if ((j?.app !== 'bagz' && j?.app !== 'frenzy') || !u || typeof u.cash !== 'number' || !Array.isArray(u.trades) || typeof u.positions !== 'object') return { ok: false, message: 'That file isn’t a BAGZ wallet backup.' };
     st.user = { following: [], theses: [], orders: [], equity: [], ...u };
     if (j.settings) st.settings = { ...st.settings, ...j.settings };
     for (const c of Object.values(j.coins || {}) as Coin[]) if (c?.id && !st.coins[c.id]) st.coins[c.id] = { ...c, updatedAt: 0 };
     return { ok: true, message: `Restored ${u.trades.length} trades and ${Object.keys(u.positions).length} positions.` };
-  } catch { return { ok: false, message: 'Couldn’t read that file. Pick the .json backup Frenzy saved.' }; }
+  } catch { return { ok: false, message: 'Couldn’t read that file. Pick the .json backup BAGZ saved.' }; }
 }
 
 export function load(): State {

@@ -1,20 +1,27 @@
 // Single-file build: bundles the app with esbuild and inlines JS + CSS into one HTML page.
-// Usage: node build.mjs            -> dist/frenzy.html (standalone, double-click to open)
+// Usage: node build.mjs            -> dist/bagz.html (standalone, double-click to open) + docs/index.html (GitHub Pages)
 import { build } from 'esbuild';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+const b64 = (f) => 'data:image/png;base64,' + readFileSync(f).toString('base64');
 
+// Use the real `lightweight-charts` package when it is installed (npm install); otherwise the app loads it at runtime.
+const lwc = existsSync('node_modules/lightweight-charts') ? 'lightweight-charts' : './src/chart/lwc-none.ts';
+console.log('chart library:', lwc === 'lightweight-charts' ? 'bundled from node_modules' : 'runtime load (jsDelivr / docs/vendor)');
 const r = await build({
   entryPoints: ['src/main.tsx'], bundle: true, minify: true, write: false, outdir: 'dist',
-  jsx: 'automatic', target: 'es2020', define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'warning',
+  alias: { 'bagz-lwc': lwc }, jsx: 'automatic', loader: { '.png': 'dataurl' }, target: 'es2020', define: { 'process.env.NODE_ENV': '"production"', __BAGZ_PROXY__: JSON.stringify(process.env.BAGZ_PROXY_URL || ''), __BAGZ_LIVE_TRADING__: JSON.stringify(process.env.BAGZ_LIVE_TRADING || '0') }, logLevel: 'warning',
 });
 const js = r.outputFiles.find((f) => f.path.endsWith('.js')).text;
 const css = r.outputFiles.find((f) => f.path.endsWith('.css')).text;
 const fonts = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&display=swap">';
-const head = `<title>Frenzy</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="Paper-trade memecoins with a live social feed and a Gem Radar for new launches.">\n${fonts}\n<style>${css}</style>`;
+const head = `<title>BAGZ</title>\n<meta name="theme-color" content="#090909">\n<link rel="icon" type="image/png" href="${b64('public/favicon.png')}">\n<link rel="apple-touch-icon" href="${b64('public/apple-touch-icon.png')}">\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="Live memecoin charts, a Gem Radar for new launches and a paper-trading desk.">\n${fonts}\n<style>${css}</style>`;
 const bodyHtml = `<div id="root"></div>\n<script>${js.replace(/<\/script/g, '<\\/script')}</script>`;
 mkdirSync('dist', { recursive: true });
 // artifact body (the host wraps it in a document skeleton)
 writeFileSync('dist/artifact.html', `${head}\n${bodyHtml}\n`);
 // standalone file
-writeFileSync('dist/frenzy.html', `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${head}</head><body>${bodyHtml}</body></html>\n`);
+mkdirSync('docs', { recursive: true });
+const page = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${head}</head><body>${bodyHtml}</body></html>\n`;
+writeFileSync('docs/index.html', page);
+writeFileSync('dist/bagz.html', `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${head}</head><body>${bodyHtml}</body></html>\n`);
 console.log('built', (js.length / 1024).toFixed(0) + 'KB js', (css.length / 1024).toFixed(0) + 'KB css');

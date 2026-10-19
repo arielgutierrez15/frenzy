@@ -25,12 +25,16 @@ export type SourceId =
   | 'major'; // on the blue-chip list
 
 export interface SourceStatus {
-  id: SourceId | 'ds-pairs' | 'gt-ohlcv' | 'gt-trades' | 'gt-pools' | 'sol-rpc' | 'jup-search' | 'jup-price' | 'rugcheck';
+  id: SourceId | 'ds-pairs' | 'gt-ohlcv' | 'gt-trades' | 'gt-pools' | 'sol-rpc' | 'jup-search' | 'jup-price' | 'rugcheck' | 'jup-quote' | 'jup-execute' | 'sol-confirm';
   label: string;
   ok: boolean | null; // null = not tried yet
-  at?: number;
+  at?: number; // when the provider data was actually fetched
   count?: number;
   error?: string;
+  stale?: boolean; // the live call failed and the last good answer is shown
+  via?: 'proxy' | 'direct';
+  ms?: number; // recent latency
+  kind?: string; // network | timeout | http | rate-limited | invalid | cooldown
 }
 
 /** Contract and holder checks. undefined = the sources didn't report it. */
@@ -49,6 +53,7 @@ export interface Coin {
   symbol: string;
   name: string;
   icon?: string;
+  decimals?: number; // token decimals (Jupiter), needed to turn amounts into raw units for swaps
   header?: string; // wide banner image from DexScreener
   description?: string;
   price: number; // 0 = not priced yet
