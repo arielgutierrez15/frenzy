@@ -576,3 +576,7 @@ button.source:hover { color: var(--fg); }
 }
 .addr-input { flex-wrap: wrap; }
 .addr-input input { font-family: var(--f-num); font-size: 0.9rem; letter-spacing: -0.01em; min-width: 0; width: 100%; text-overflow: ellipsis; }
+
+/* ---- inside Telegram ------------------------------------------------------------------------------------------- */
+.tg-back .view > .back { display: none; }
+.tg .tabbar { padding-bottom: max(env(safe-area-inset-bottom), var(--tg-content-safe-area-inset-bottom, 0px)); }

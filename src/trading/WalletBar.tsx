@@ -1,11 +1,14 @@
 import React from 'react';
 import { useWallet, connect, disconnect, isMobile, walletBrowseLinks } from './walletStore';
 import { short } from '../engine';
+import { inTelegram, cleanPageUrl, openExternal } from '../telegram';
 
 /** Connect / disconnect row shared by Live swap, Promote and Admin. Never asks for a seed phrase or private key. */
 export function WalletBar({ compact = false }: { compact?: boolean }) {
   const ws = useWallet();
-  const here = typeof location !== 'undefined' ? location.href : '';
+  // never put Telegram's launch data (the user's signed session) into a link
+  const here = cleanPageUrl();
+  const tgApp = inTelegram();
   return (
     <div className="stack gap-xs">
       <div className="row gap-s wrap">
@@ -21,7 +24,16 @@ export function WalletBar({ compact = false }: { compact?: boolean }) {
             {w.icon ? <img src={w.icon} alt="" width={16} height={16} className="wallet-ico" /> : null}
             {ws.connecting === w.name ? 'Approve in wallet…' : `Connect ${w.name}`}
           </button>
-        )) : isMobile() ? (
+        )) : tgApp ? (
+          <span className="stack gap-xs">
+            <span className="muted small">Wallets can’t connect inside Telegram. Open BAGZ in your wallet app, or in a browser that has your wallet extension:</span>
+            <span className="row gap-s wrap">
+              {walletBrowseLinks(here).map((l) => <button key={l.name} className="chip-btn" onClick={() => openExternal(l.url)}>Open in {l.name}</button>)}
+              <button className="chip-btn" onClick={() => openExternal(here)}>Open in browser</button>
+            </span>
+            <span className="muted small">Paper trading, charts and Gem Radar work right here.</span>
+          </span>
+        ) : isMobile() ? (
           <span className="stack gap-xs">
             <span className="muted small">On a phone, open BAGZ inside your wallet app’s browser to connect:</span>
             <span className="row gap-s wrap">

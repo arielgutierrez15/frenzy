@@ -82,6 +82,18 @@ The site keeps working without it (calls go direct from the browser, with the li
 - **Abuse limits:** per-IP requests/min (`RATE_PER_MIN`, 240), stricter POSTs/min (`RATE_POST_PER_MIN`, 20), the optional Cloudflare binding, and a per-provider upstream budget per minute on cache misses (Jupiter 50, GeckoTerminal 80 with a key / 8 without, DexScreener 240, pump.fun 30, RugCheck 30, RPC 100; override with `UPSTREAM_PER_MIN_<ID>`), so one visitor cannot burn your keys. Limited answers are 429 with `Retry-After` and `x-bagz-limit`.
 - **Responses:** JSON only (anything else becomes 502), 2 MB cap, no redirects followed, upstream error bodies never forwarded, errors not cached, keys never echoed.
 
+## Telegram Mini App
+
+BAGZ runs inside Telegram as a Mini App. Nothing extra is hosted: Telegram opens the GitHub Pages site.
+
+**Set it up in @BotFather** (in Telegram):
+1. `/newbot` → pick a name and a username ending in `bot`. Keep the token BotFather gives you private (BAGZ doesn't need it).
+2. Open your bot in BotFather (`/mybots`) → **Bot Settings** → **Configure Mini App** → enable it and send `https://arielgutierrez15.github.io/frenzy/`. This adds an **Open** / launch button to the bot's profile.
+3. Optional: **Bot Settings** → **Menu Button** → same URL, button text `Open BAGZ`, so the button sits next to the chat box. Set a description, about text and picture with `/setdescription`, `/setabouttext`, `/setuserpic`.
+4. Share `https://t.me/<your_bot>?startapp` to open BAGZ, or `https://t.me/<your_bot>?startapp=<token mint>` to open straight to a coin.
+
+**What changes inside Telegram** (`src/telegram.ts`): Telegram's script is loaded only when Telegram opened the page; the app tells Telegram it is ready, fills the screen, uses BAGZ black for Telegram's header and bars, turns off swipe-down-to-close (so charts can be dragged), uses Telegram's back button, opens outside links through Telegram, and gives light haptic taps. Wallet extensions can't run inside Telegram, so the wallet panel offers **Open in Phantom / Solflare / browser**; those links never include Telegram's launch data. Paper trading, charts and Gem Radar work inside Telegram. Tested with `npm run test:telegram` (fake Telegram client); not yet tried in the real Telegram apps.
+
 ## Swaps with the BAGZ fee, and BOOST (both OFF)
 
 ### How it works

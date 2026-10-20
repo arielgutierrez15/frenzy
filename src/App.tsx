@@ -10,6 +10,7 @@ import type { Notif } from './types';
 import { Wordmark, BRAND_TAGLINE } from './brand';
 import { PromoteView } from './boost/PromoteView';
 import { AdminView } from './boost/AdminView';
+import { inTelegram, syncBackButton, startMint, haptic } from './telegram';
 
 const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -73,6 +74,19 @@ export default function App() {
     toast: (tone, title, body) => pushToast({ tone, title, body }),
   }), [route, pushToast]);
 
+  // Telegram: its own back button mirrors BAGZ back navigation
+  const canBack = stack.length > 1 || route.tab === 'promote' || route.tab === 'admin';
+  useEffect(() => syncBackButton(canBack, () => { haptic.tap(); if (stack.length > 1) nav.back(); else nav.go('home'); }), [canBack, stack.length, nav]);
+  // Telegram: t.me/<bot>?startapp=<mint> opens that coin once it has loaded
+  const startRef = useRef<{ mint: string | null; at: number; done: boolean }>({ mint: startMint(), at: Date.now(), done: false });
+  useEffect(() => {
+    const sr = startRef.current;
+    if (!sr.mint || sr.done) return;
+    const id = `solana:${sr.mint}`;
+    if (st.coins[id]) { sr.done = true; nav.openCoin(id); return; }
+    if (st.loaded && Date.now() - sr.at > 30_000) { sr.done = true; pushToast({ tone: 'info', title: 'Coin not found', body: 'That shared coin isn’t in BAGZ’s live data right now.' }); }
+  });
+
   const s = userStats(st);
   const unread = st.notifs.filter((n) => !n.read).length;
   const view = route.coin ? <CoinView key={route.coin} id={route.coin} /> : route.trader ? <TraderView key={route.trader} id={route.trader} /> :
@@ -82,7 +96,7 @@ export default function App() {
 
   return (
     <NavCtx.Provider value={nav}>
-      <div className="app">
+      <div className={`app${inTelegram() ? ' app-tg' : ''}`}>
         <aside className="rail">
           <button className="brand" onClick={() => nav.go('home')} aria-label="BAGZ home">
             <Wordmark />
@@ -134,7 +148,7 @@ export default function App() {
           {TABS.map((t) => {
             const Ico = Icon[t.icon];
             return (
-              <button key={t.id} className={route.tab === t.id ? 'on' : ''} onClick={() => nav.go(t.id)} aria-current={route.tab === t.id}>
+              <button key={t.id} className={route.tab === t.id ? 'on' : ''} onClick={() => { haptic.tap(); nav.go(t.id); }} aria-current={route.tab === t.id}>
                 <Ico size={22} /><span>{t.label === 'Gem Radar' ? 'Radar' : t.label}</span>
               </button>
             );
