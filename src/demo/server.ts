@@ -86,7 +86,7 @@ function start() {
     // save after writes, at most once a second, and when the page is hidden
     setInterval(() => { if (d1.dirty) { d1.dirty = false; saveBytes(db.export()); } }, 1000);
     document.addEventListener('visibilitychange', () => { if (document.hidden && d1.dirty) { d1.dirty = false; saveBytes(db.export()); } });
-    const env = { Db: d1, PROBE_TOKEN: 'test-copy', ALLOWED_ORIGINS: DEMO_BASE, PASSWORD_ITERATIONS: '100000', RATE_PER_MIN: '100000', RATE_POST_PER_MIN: '100000', ADMIN_SESSION_SECRET: 'test-copy-only-'.padEnd(40, 'x') };
+    const env = { Db: d1, TEST_COPY: '1', ENABLE_LIVE_BOOST_PAYMENTS: 'true', PROBE_TOKEN: 'test-copy', ALLOWED_ORIGINS: DEMO_BASE, PASSWORD_ITERATIONS: '100000', RATE_PER_MIN: '100000', RATE_POST_PER_MIN: '100000', ADMIN_SESSION_SECRET: 'test-copy-only-'.padEnd(40, 'x') };
     return { d1, env };
   })();
   return ready;

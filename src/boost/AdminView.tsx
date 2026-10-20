@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { WalletBar } from '../trading/WalletBar';
 import { useWallet } from '../trading/walletStore';
 import { signMessageText } from '../trading/wallet';
-import { adminChallenge, adminSession, adminPromotions, adminDecide, type AdminPromotion } from '../trading/api';
+import { getServerConfig, adminChallenge, adminSession, adminPromotions, adminDecide, type AdminPromotion } from '../trading/api';
 import { short } from '../engine';
+import { useSession } from '../social/session';
 
 const TABS = [['pending_review', 'Needs review'], ['approved', 'Approved'], ['awaiting_payment', 'Unpaid'], ['rejected', 'Rejected'], ['all', 'All']] as const;
 
@@ -18,8 +19,12 @@ export function AdminView() {
   const [starts, setStarts] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
 
+  // test copy: any signed-in BAGZ account can review (the server only allows this in the test copy)
+  const ses = useSession();
+  const [testCopy, setTestCopy] = useState(false);
+  useEffect(() => { getServerConfig().then((c) => { if (c.testCopy && ses.token && ses.user) { setTestCopy(true); setSession({ token: ses.token, wallet: '@' + ses.user.username, expiresAt: Date.now() + 86_400_000 }); } }, () => {}); }, [ses.token]);
   // a session belongs to the wallet that signed it
-  useEffect(() => { if (session && ws.conn?.account.address !== session.wallet) setSession(null); }, [ws.conn?.account.address]);
+  useEffect(() => { if (!testCopy && session && ws.conn?.account.address !== session.wallet) setSession(null); }, [ws.conn?.account.address]);
   const load = async () => {
     if (!session) return;
     setErr('');
@@ -54,8 +59,8 @@ export function AdminView() {
     <section className="view admin">
       <header className="view-head"><div><h1>Boost review</h1><p className="muted">Approve or reject paid listings. Only wallets on the server’s admin list can sign in; nothing here moves funds.</p></div></header>
       <div className="panel">
-        <WalletBar compact />
-        {session ? <p className="small up">Signed in as {short(session.wallet)} until {new Date(session.expiresAt).toLocaleTimeString()}.</p>
+        {testCopy ? <p className="test-copy-note small"><b>Test copy:</b> every account can review here so you can try the flow. In the real app only wallets on the admin list can.</p> : <WalletBar compact />}
+        {session ? <p className="small up">Signed in as {session.wallet.startsWith('@') ? session.wallet : short(session.wallet)}{testCopy ? '' : ` until ${new Date(session.expiresAt).toLocaleTimeString()}`}.</p>
           : <button className="btn btn-accent" disabled={!ws.conn || !!busy} onClick={signIn}>{busy || (ws.conn ? 'Sign in with this wallet' : 'Connect an admin wallet')}</button>}
         {err && <p className="small warn">{err}</p>}
       </div>

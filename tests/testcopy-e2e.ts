@@ -102,6 +102,31 @@ check('Ana signs up (username, password, picture) and lands on home', await sign
 check('picture shows (served by the in-page server)', await until(async () => p.evaluate(() => { const i = document.querySelector('.topbar-me img') as HTMLImageElement; return !!i && i.complete && i.naturalWidth === 320; }), 8000));
 await paperTrade(p, 'buy');
 await paperTrade(p, 'sell');
+await tab(p, /^Cards$/).click();
+check('Cards tab: closing the trade saved its card', await until(async () => (await p.locator('.card-thumb').count()) === 1, 8000));
+check('Cards tab: the card thumbnail is drawn', await until(async () => p.evaluate(() => { const i = document.querySelector('.card-thumb img') as HTMLImageElement; return !!i && i.complete && i.naturalWidth === 600; }), 8000));
+await p.locator('.card-thumb').first().click();
+check('tapping a saved card opens it full size', await until(async () => p.evaluate(() => (document.querySelector('.card-img') as HTMLImageElement)?.naturalWidth === 1200), 8000));
+await p.locator('.sheet.share button[aria-label=Close]').click();
+await p.screenshot({ path: `${SHOTS}/testcopy-cards.png` });
+// sponsored listing: order with a test payment → review → live in the Sponsored row
+const PROMO = /export const JUPITER[\s\S]*?\[\s*'([1-9A-HJ-NP-Za-km-z]{32,44})',\s*'([^']+)',\s*'([^']+)'/.exec(readFileSync(resolve(root, 'src/snapshot.ts'), 'utf8'))!;
+await tab(p, /^Home$/).click();
+await p.locator('button', { hasText: 'Promote a token' }).click();
+await p.locator('input[aria-label="Token address"]').fill(PROMO[1]);
+check('Promote: token checked (on-chain mint + market data)', await until(async () => (await text(p, '.promo-token')).includes(PROMO[3]), 15000));
+await p.locator('.promo-pkg', { hasText: 'Starter' }).click();
+check('Promote: test copy says no wallet or money is used', /no wallet or money/.test(await text(p, 'main')));
+await p.locator('button', { hasText: /Place order with a test payment/ }).click();
+check('Promote: order placed and marked paid → waiting for review', await until(async () => /Paid · waiting for BAGZ review/.test(await text(p, 'main')), 10000));
+await p.locator('button', { hasText: 'Open the review desk' }).click();
+check('review desk opens for the signed-in account (test copy)', await until(async () => (await p.locator('.admin-row').count()) === 1, 10000));
+check('review desk shows the TEST payment', /TEST-PAYMENT|TEST-PAY/.test(await text(p, '.admin-row')) || /20 USDC|10 USDC/.test(await text(p, '.admin-row')));
+await p.locator('.admin-row button', { hasText: 'Approve' }).click();
+await until(async () => (await p.locator('.admin-row').count()) === 0, 8000);
+await tab(p, /^Home$/).click();
+check('Sponsored row shows the approved listing, labelled', await until(async () => (await p.locator('.sponsored-card').count()) === 1 && /Paid placement/.test(await text(p, '.sponsored')), 15000));
+await p.screenshot({ path: `${SHOTS}/testcopy-sponsored.png` });
 await tab(p, /^Ranks$/).click();
 check('Ana is on the leaderboard', await until(async () => /#1[\s\S]*You · @ana/.test(await text(p, 'main')), 15000));
 // second account in the same browser
@@ -149,6 +174,8 @@ await tab(p, /^Live$/).click();
 await p.locator('.seg button', { hasText: /^Friends$/ }).click();
 check('Live → Friends: Ana sees no trades from Ben, because Ben has his own empty paper wallet', await until(async () => /haven’t traded yet/.test(await text(p, 'main')), 8000));
 check('phone layout fits', await noHScroll(p));
+await tab(p, /^Cards$/).click();
+check('phone: Cards tab fits', await noHScroll(p));
 check('nothing was sent to any BAGZ server (only market data requests left the page)', !netCalls.some((u) => /test-copy\.bagz|workers\.dev/.test(u)), netCalls.filter((u) => /test-copy\.bagz|workers\.dev/.test(u)).slice(0, 3).join(' '));
 await ctx.close();
 

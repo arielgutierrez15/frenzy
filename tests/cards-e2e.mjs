@@ -83,6 +83,12 @@ const cardInfo = (p) => p.evaluate(async () => {
   check('phone: card sheet has no horizontal scroll', await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   await p.locator('.sheet.share button[aria-label=Close]').click();
 
+  // Cards tab keeps the closed trade's card
+  await p.locator('.tabbar button', { hasText: /^Cards$/ }).click();
+  check('Cards tab: the closed trade’s card was saved automatically', await until(async () => (await p.locator('.card-thumb').count()) === 1, 8000));
+  check('Cards tab: phone layout fits with 7 tabs', await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+  await p.screenshot({ path: `${SHOTS}/cards-tab-phone.png` });
+  await p.locator('.tabbar button', { hasText: /^Wallet$/ }).click();
   // activity row card
   await p.locator('.seg button', { hasText: /^Activity/ }).click();
   await p.locator('.activity .icon-btn[aria-label*="sell"]').first().click();
@@ -97,8 +103,19 @@ const cardInfo = (p) => p.evaluate(async () => {
   const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 5000 }).catch(() => null), p.locator('.sheet.share button', { hasText: 'Save image' }).click()]);
   check('Save image downloads a PNG named bagz-wallet-card.png', dl && dl.suggestedFilename() === 'bagz-wallet-card.png', dl?.suggestedFilename());
   writeFileSync(`${SHOTS}/card-wallet.png`, await p.locator('.card-img').screenshot());
+  await p.locator('.sheet.share button', { hasText: 'Save to Cards' }).click();
+  check('wallet card can be saved to Cards', await until(async () => /In your Cards/.test(await p.locator('.sheet.share').innerText()), 4000));
   await p.locator('.sheet.share button[aria-label=Close]').click();
 
+  await p.locator('.tabbar button', { hasText: /^Cards$/ }).click();
+  check('Cards tab now holds 2 cards; Wins/Losses filters work', await until(async () => (await p.locator('.card-thumb').count()) === 2, 5000));
+  await p.locator('.seg button', { hasText: /^Wallet$/ }).click();
+  check('…filter by Wallet shows the wallet card only', await until(async () => (await p.locator('.card-thumb').count()) === 1, 4000));
+  await p.locator('.card-thumb').first().click();
+  await p.locator('.sheet.share button', { hasText: 'Remove from Cards' }).click();
+  await p.locator('.seg button', { hasText: /^All$/ }).click();
+  check('a card can be removed from Cards', await until(async () => (await p.locator('.card-thumb').count()) === 1, 4000));
+  await p.locator('.tabbar button', { hasText: /^Wallet$/ }).click();
   // brand marks in the UI
   check('empty states use the badge', await until(async () => { await p.locator('.seg button', { hasText: /^Positions/ }).click(); return (await p.locator('.empty .empty-badge').count()) >= 1; }, 5000));
   await ctx.close();

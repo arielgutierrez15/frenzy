@@ -43,7 +43,7 @@ export interface Pkg { id: 'starter' | 'boost' | 'prime' | 'spotlight'; label: s
 export interface ServerConfig {
   liveSwaps: boolean; liveBoostPayments: boolean; feeBps: number | null;
   feeAccounts: { wsol: boolean; usdc: boolean }; boostConfigured: boolean; adminConfigured: boolean; database: boolean;
-  jupiterKey: boolean; rpc: 'custom' | 'helius' | 'public'; packages: Pkg[];
+  jupiterKey: boolean; rpc: 'custom' | 'helius' | 'public'; packages: Pkg[]; testCopy?: boolean;
 }
 let cfgCache: { at: number; v: Promise<ServerConfig> } | null = null;
 export function getServerConfig(force = false): Promise<ServerConfig> {
@@ -85,6 +85,8 @@ export const getOrder = (id: string) => apiCall<{ order: Order; solanaPay: strin
 export const orderTransaction = (id: string, payer: string) => apiCall<{ transaction: string; lastValidBlockHeight: number }>(`/boost/orders/${id}/transaction`, { body: { payer } });
 export const submitOrderPayment = (id: string, signedTransaction: string) => apiCall<{ signature: string; status: string }>(`/boost/orders/${id}/submit`, { body: { signedTransaction } });
 export const verifyOrder = (id: string, signature?: string) => apiCall<{ order: Order; verified: boolean; reason?: string; signature?: string }>(`/boost/orders/${id}/verify`, { body: signature ? { signature } : {} });
+/** TEST COPY ONLY: fake payment so the review flow can be tried (the server refuses it everywhere else) */
+export const testPayOrder = (id: string) => apiCall<{ order: Order; verified: boolean }>(`/boost/orders/${id}/test-pay`, { body: {} });
 export const activeCampaigns = () => apiCall<{ campaigns: Campaign[]; at: number }>('/boost/active');
 export const sendCampaignEvent = (id: string, type: 'impression' | 'click') => apiCall<{ counted: boolean }>('/boost/events', { body: { id, type } }).catch(() => ({ counted: false }));
 

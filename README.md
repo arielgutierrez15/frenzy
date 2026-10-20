@@ -143,7 +143,7 @@ The fee token accounts must exist before swaps are enabled (create the wSOL and 
 
 ## Test copy (no server needed)
 
-`https://arielgutierrez15.github.io/frenzy/demo/` — the full app with accounts, leaderboard, friends and chats working before the Worker is deployed. The real Worker code runs inside the page on SQLite compiled to WebAssembly ([sql.js](https://github.com/sql-js/sql.js), MIT, `src/demo/vendor/`), saved in that browser only. Build with `npm run build:copy`, test with `npm run test:copy`. Each BAGZ account has its own paper wallet on a device.
+`https://arielgutierrez15.github.io/frenzy/demo/` — the full app with accounts, leaderboard, friends and chats working before the Worker is deployed. The real Worker code runs inside the page on SQLite compiled to WebAssembly ([sql.js](https://github.com/sql-js/sql.js), MIT, `src/demo/vendor/`), saved in that browser only. Build with `npm run build:copy`, test with `npm run test:copy`. Sponsored listings can be tried end to end there: a clearly labelled **test payment** (no wallet, no money) puts the order in review, and any account can approve it in the review desk. Those two shortcuts exist only when `TEST_COPY=1`, which only the test copy sets; the deployed Worker refuses them. Each BAGZ account has its own paper wallet on a device.
 
 ## Accounts, leaderboard, friends and chats
 
@@ -159,6 +159,8 @@ Needs the Worker with D1 (`0002_social.sql`). Until then the app runs without ac
 - Tested with `npm run test:social` (two users + a Telegram user, real Worker code, 43 checks) and `tests/api-social.test.ts`.
 
 ## Trading cards
+
+**Cards tab:** every closed paper trade's card is kept automatically; wallet and position cards can be saved from their share sheet. Filter by wins/losses/type, sort by newest or biggest gain, tap to open, share or remove. Cards live with each account's paper wallet (and its backup).
 
 Shareable 1200×750 PNG cards drawn in the browser (`src/card/`): the paper wallet (Wallet → Trading card), any open position (share icon on the position), and every closed trade (opens by itself after a sell; also from Activity). Share uses the phone's share sheet where available, otherwise Save image; inside Telegram, "Send in Telegram" or press-and-hold to save. Every card is labelled PAPER TRADING. Tested with `npm run test:cards`.
 

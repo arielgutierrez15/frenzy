@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useNav } from '../nav';
 import { activeCampaigns, sendCampaignEvent, type Campaign } from '../trading/api';
-import { proxyBase } from '../providers/config';
+import { apiBase } from '../trading/api';
 import { setPromoteMint } from './PromoteView';
 
 /**
@@ -14,7 +14,7 @@ export function SponsoredStrip() {
   const [list, setList] = useState<Campaign[]>([]);
   const nav = useNav();
   useEffect(() => {
-    if (!proxyBase()) return;
+    if (!apiBase()) return;
     let live = true;
     const load = () => activeCampaigns().then((r) => { if (live) setList(r.campaigns.filter((c) => !c.endsAt || c.endsAt > Date.now())); }, () => {});
     load();
@@ -41,6 +41,7 @@ function SponsoredCard({ c }: { c: Campaign }) {
   const nav = useNav();
   const ref = useRef<HTMLButtonElement>(null);
   const seen = useRef(false);
+  const [broken, setBroken] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -61,7 +62,7 @@ function SponsoredCard({ c }: { c: Campaign }) {
   };
   return (
     <button ref={ref} className="sponsored-card" onClick={open} aria-label={`Sponsored: ${c.symbol}`}>
-      {c.icon ? <img src={c.icon} alt="" width={36} height={36} referrerPolicy="no-referrer" className="promo-ico" /> : <span className="coin-badge" />}
+      {c.icon && !broken ? <img src={c.icon} alt="" width={36} height={36} referrerPolicy="no-referrer" className="promo-ico" onError={() => setBroken(true)} /> : <span className="promo-ico sponsored-letter" aria-hidden="true">{(c.symbol || '?').slice(0, 2).toUpperCase()}</span>}
       <span className="stack"><b>${c.symbol}</b><span className="muted small">{c.name}</span></span>
       <span className="ad-tag">Ad</span>
     </button>

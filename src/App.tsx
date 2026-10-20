@@ -4,6 +4,7 @@ import { NavCtx, useNav, Nav, Route, Tab, TradeIntent } from './nav';
 import { HomeView, FeedView, RadarView, WalletView, LeadersView, CoinView, TraderView, FollowButton } from './views';
 import { TradeSheet } from './TradeSheet';
 import { CardSheet, type CardSpec } from './card/CardSheet';
+import { CardsView } from './card/CardsView';
 import { Avatar, CoinBadge, Icon, ScoreRing } from './ui';
 import { toastQueue, userStats, scoreCoin, topWallets, short } from './engine';
 import { ago, compact, pct, usd, signedUsd } from './format';
@@ -19,6 +20,7 @@ const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'feed', label: 'Live', icon: 'feed' },
   { id: 'radar', label: 'Gem Radar', icon: 'radar' },
+  { id: 'cards', label: 'Cards', icon: 'card' },
   { id: 'ranks', label: 'Ranks', icon: 'trophy' },
   { id: 'chats', label: 'Chats', icon: 'chat' },
   { id: 'wallet', label: 'Wallet', icon: 'wallet' },
@@ -106,7 +108,7 @@ export default function App() {
   const view = route.coin ? <CoinView key={route.coin} id={route.coin} /> : route.trader ? <TraderView key={route.trader} id={route.trader} /> :
     route.user ? <ProfileView key={route.user} username={route.user} /> : route.chat ? <ChatRoom key={route.chat} id={route.chat} /> :
     route.tab === 'home' ? <HomeView /> : route.tab === 'feed' ? <FeedView /> : route.tab === 'radar' ? <RadarView /> : route.tab === 'wallet' ? <WalletView /> :
-    route.tab === 'ranks' ? <RanksView onchain={<LeadersView embedded />} /> : route.tab === 'chats' ? <ChatsView section={route.section} /> : route.tab === 'me' ? <ProfileView /> :
+    route.tab === 'cards' ? <CardsView /> : route.tab === 'ranks' ? <RanksView onchain={<LeadersView embedded />} /> : route.tab === 'chats' ? <ChatsView section={route.section} /> : route.tab === 'me' ? <ProfileView /> :
     route.tab === 'promote' ? <PromoteView /> : route.tab === 'admin' ? <AdminView /> : <LeadersView />;
   const sub = !!(route.coin || route.trader || route.user || route.chat);
   const showAside = !sub && (route.tab === 'feed' || route.tab === 'leaders');
