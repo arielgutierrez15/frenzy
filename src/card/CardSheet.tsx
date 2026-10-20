@@ -1,13 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useStore } from '../store';
+import { useStore, act } from '../store';
 import { useNav } from '../nav';
 import { Icon } from '../ui';
-import { userStats } from '../engine';
+import { userStats, uid } from '../engine';
 import { ago, compact, price as fmtPrice } from '../format';
 import { renderCard, cardText, CARD_W, CARD_H, type CardData } from './tradingCard';
 import { cleanPageUrl, inTelegram, openExternal } from '../telegram';
 
-export type CardSpec = { kind: 'wallet' } | { kind: 'position'; coinId: string } | { kind: 'trade'; tradeId: string };
+export type CardSpec = { kind: 'wallet' } | { kind: 'position'; coinId: string } | { kind: 'trade'; tradeId: string } | { kind: 'saved'; id: string };
+
+const MAX_CARDS = 200;
+/** keep a card in the Cards tab; the same trade is only kept once */
+export function keepCard(key: string, data: CardData): string {
+  return act((s) => {
+    const list = s.user.cards || (s.user.cards = []);
+    const had = list.find((c) => c.key === key);
+    if (had) return had.id;
+    const id = uid('card');
+    list.unshift({ id, t: Date.now(), key, data });
+    if (list.length > MAX_CARDS) list.length = MAX_CARDS;
+    return id;
+  });
+}
+export function dropCard(id: string) { act((s) => { s.user.cards = (s.user.cards || []).filter((c) => c.id !== id); }); }
 
 /** the app's public address (never Telegram launch data, never a page hash) */
 export function appLink(): string {
@@ -18,6 +33,7 @@ function useCardData(spec: CardSpec): CardData | null {
   const st = useStore();
   const s = userStats(st);
   return useMemo(() => {
+    if (spec.kind === 'saved') return st.user.cards?.find((c) => c.id === spec.id)?.data ?? null;
     const link = appLink();
     if (spec.kind === 'wallet') {
       const sells = st.user.trades.filter((t) => t.side === 'SELL' && t.pnl !== undefined && t.usd - t.pnl! > 0);
@@ -52,13 +68,19 @@ function useCardData(spec: CardSpec): CardData | null {
       stats: [{ label: 'Bought at', value: fmtPrice(cost / t.qty) }, { label: 'Sold at', value: fmtPrice(t.price) }, { label: 'Size', value: compact(cost) }],
     };
   // prices tick every few seconds; the card is drawn once per open
-  }, [spec.kind, (spec as any).coinId, (spec as any).tradeId]);
+  }, [spec.kind, (spec as any).coinId, (spec as any).tradeId, (spec as any).id]);
 }
 
 /** The trading card sheet: shows the PNG and lets people share it, save it, or copy a summary. */
 export function CardSheet({ spec, onClose }: { spec: CardSpec; onClose: () => void }) {
   const nav = useNav();
   const data = useCardData(spec);
+  const st = useStore();
+  const saveKey = spec.kind === 'trade' ? `trade:${spec.tradeId}` : spec.kind === 'position' ? `position:${spec.coinId}:${Math.round(Date.now() / 60_000)}` : spec.kind === 'wallet' ? `wallet:${Math.round(Date.now() / 60_000)}` : '';
+  const [savedId, setSavedId] = useState<string | null>(spec.kind === 'saved' ? spec.id : null);
+  // a closed trade's card goes into the Cards tab by itself
+  useEffect(() => { if (spec.kind === 'trade' && data) setSavedId(keepCard(saveKey, data)); }, [spec.kind, !!data]);
+  void st;
   const [url, setUrl] = useState('');
   const [blob, setBlob] = useState<Blob | null>(null);
   const [err, setErr] = useState('');
@@ -112,6 +134,12 @@ export function CardSheet({ spec, onClose }: { spec: CardSpec; onClose: () => vo
           {tg ? <button className={`btn ${canShareFile ? 'btn-ghost' : 'btn-accent grow'}`} onClick={toTelegram}>Send in Telegram</button>
             : <button className={`btn ${canShareFile ? 'btn-ghost' : 'btn-accent grow'}`} onClick={save} disabled={!blob}>Save image</button>}
           <button className="btn btn-ghost" onClick={copy}><Icon.copy size={16} /> Copy text</button>
+        </div>
+        <div className="row gap-s wrap">
+          {spec.kind === 'saved' ? <button className="link small danger-link" onClick={() => { dropCard(spec.id); onClose(); }}>Remove from Cards</button>
+            : savedId ? <span className="small up"><Icon.check size={14} /> In your Cards</span>
+            : <button className="btn btn-soft btn-sm" onClick={() => { setSavedId(keepCard(saveKey, data)); nav.toast('info', 'Saved to Cards'); }}>Save to Cards</button>}
+          {savedId && spec.kind !== 'saved' && <button className="link small" onClick={() => { onClose(); nav.go('cards'); }}>Open Cards</button>}
         </div>
         <p className="muted small">Paper trading results on live prices. No real money was used.</p>
       </div>

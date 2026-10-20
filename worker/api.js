@@ -21,7 +21,7 @@ import {
   fromApiInstruction, setComputeUnitLimitIx, setComputeUnitPriceIx, transferCheckedIx, memoIx, verifyEd25519, sha256hex, randomBytes,
   PROGRAMS, MINTS, eqBytes,
 } from './solana.js';
-import { social } from './social.js';
+import { social, currentUser } from './social.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -59,6 +59,11 @@ export function config(env) {
   };
 }
 export const database = (env) => env.Db || env.DB || null;
+/**
+ * TEST COPY ONLY. Set by src/demo/server.ts inside the browser test copy, never in wrangler.toml. It allows a fake
+ * "test payment" for BOOST orders and lets any signed-in BAGZ account use the review desk. No money is involved.
+ */
+export const isTestCopy = (env) => env.TEST_COPY === '1';
 export function rpcUrl(env) {
   if (env.SOLANA_RPC_URL) return env.SOLANA_RPC_URL;
   if (env.HELIUS_API_KEY) return `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(env.HELIUS_API_KEY)}`;
@@ -368,11 +373,12 @@ async function tokenInfo(ctx, mint) {
   if (!v || (v.owner !== PROGRAMS.token && v.owner !== PROGRAMS.token2022) || !v.data || !v.data.parsed || v.data.parsed.type !== 'mint') throw bad('That address is not a Solana token mint');
   let meta = null;
   try {
+    if (!ctx.env.JUPITER_API_KEY) throw new ApiError(0, 'no key');
     const j = await jupiter(ctx, '/tokens/v2/search', { query: mint });
     const list = Array.isArray(j) ? j : [];
     const t = list.find((x) => x && x.id === mint);
     if (t) meta = { symbol: String(t.symbol || '').slice(0, 20), name: String(t.name || '').slice(0, 60), icon: /^https:\/\//.test(t.icon || '') ? String(t.icon).slice(0, 300) : null };
-  } catch (e) { if (e instanceof ApiError && e.status === 503) throw e; }
+  } catch (e) { if (e instanceof ApiError && e.status === 503 && ctx.env.JUPITER_API_KEY) throw e; }
   if (!meta) {
     const res = await upstream(ctx, 'ds', `https://api.dexscreener.com/tokens/v1/solana/${mint}`, { headers: { accept: 'application/json' } });
     if (res.ok) {
@@ -415,7 +421,7 @@ async function boostCreate(ctx, b) {
     if (prior.mint !== b.mint || prior.package !== pkg.id || prior.advertiser !== b.advertiser) throw new ApiError(409, 'idempotencyKey was already used for a different order');
     return { order: orderView(prior), solanaPay: solanaPayUrl(cfg, prior) };
   }
-  await checkTokenAccount(ctx, cfg.boostAccount, MINTS.usdc, cfg.boostOwner || null, 'The BOOST USDC receiving account');
+  if (!isTestCopy(ctx.env)) await checkTokenAccount(ctx, cfg.boostAccount, MINTS.usdc, cfg.boostOwner || null, 'The BOOST USDC receiving account');
   const token = await tokenInfo(ctx, b.mint);
   const t = ctx.now(), id = newId(), reference = b58encode(randomBytes(32));
   await run(d, `INSERT INTO promotions (id, idempotency_key, mint, symbol, name, icon, package, price_raw, duration_ms, advertiser, reference, status, created_at, pay_by, updated_at)
@@ -538,6 +544,21 @@ async function boostVerify(ctx, id, b) {
   return { order: orderView(row), verified: false, reason: (last && last.reason) || 'Payment not confirmed yet' };
 }
 
+/** TEST COPY ONLY: marks an order paid with a fake, clearly labelled payment so the review flow can be tried. */
+async function boostTestPay(ctx, id) {
+  if (!isTestCopy(ctx.env)) throw new ApiError(404, 'Unknown route');
+  const d = needDb(ctx);
+  const row = await one(d, 'SELECT * FROM promotions WHERE id = ?', id);
+  if (!row) throw new ApiError(404, 'Unknown order');
+  if (row.status !== 'awaiting_payment') return { order: orderView(row), verified: true };
+  const t = ctx.now();
+  await d.batch([
+    d.prepare('INSERT INTO payments (signature, promotion_id, payer, mint, amount_raw, destination, slot, block_time, verified_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(`TEST-PAYMENT-${row.id}`, row.id, row.advertiser, MINTS.usdc, row.price_raw, 'test-copy', null, null, t),
+    d.prepare("UPDATE promotions SET status = 'pending_review', updated_at = ? WHERE id = ? AND status = 'awaiting_payment'").bind(t, row.id),
+  ]);
+  return { order: orderView(await one(d, 'SELECT * FROM promotions WHERE id = ?', row.id)), verified: true, test: true };
+}
+
 async function boostActive(ctx) {
   const d = database(ctx.env);
   if (!d) return { campaigns: [] };
@@ -607,6 +628,7 @@ async function adminSession(ctx, b) {
   return { token: `${payload}.${await hmac(secret, payload)}`, wallet: b.wallet, expiresAt: exp };
 }
 export async function requireAdmin(ctx, request) {
+  if (isTestCopy(ctx.env)) { const u = await currentUser(ctx, request); return `@${u.username}`; }
   const secret = adminSecret(ctx.env);
   const m = /^Bearer ([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(request.headers.get('authorization') || '');
   if (!m) throw new ApiError(401, 'Admin sign-in required');
@@ -654,7 +676,7 @@ async function adminDecide(ctx, admin, id, action, b) {
 export function publicConfig(env) {
   const c = config(env);
   return {
-    liveSwaps: c.liveSwaps, liveBoostPayments: c.liveBoostPayments, feeBps: c.feeBps,
+    liveSwaps: c.liveSwaps, liveBoostPayments: c.liveBoostPayments, feeBps: c.feeBps, testCopy: isTestCopy(env),
     feeAccounts: { wsol: isPubkey(c.feeAccounts[MINTS.wsol]), usdc: isPubkey(c.feeAccounts[MINTS.usdc]) },
     boostConfigured: isPubkey(c.boostAccount), adminConfigured: c.admins.length > 0, database: !!database(env),
     accounts: !!database(env),
@@ -690,6 +712,7 @@ export async function api(request, env, deps) {
   if ((p = route('POST', /^\/boost\/orders\/([A-Za-z0-9_-]{16,64})\/transaction$/))) return boostPaymentTx(ctx, p[1], body);
   if ((p = route('POST', /^\/boost\/orders\/([A-Za-z0-9_-]{16,64})\/submit$/))) return boostSubmit(ctx, p[1], body);
   if ((p = route('POST', /^\/boost\/orders\/([A-Za-z0-9_-]{16,64})\/verify$/))) return boostVerify(ctx, p[1], body);
+  if ((p = route('POST', /^\/boost\/orders\/([A-Za-z0-9_-]{16,64})\/test-pay$/))) return boostTestPay(ctx, p[1]);
   if (route('GET', /^\/boost\/active$/)) return boostActive(ctx);
   if (route('POST', /^\/boost\/events$/)) return boostEvent(ctx, body, request);
   if (route('POST', /^\/admin\/challenge$/)) return adminChallenge(ctx, body);

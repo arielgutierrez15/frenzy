@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { Side } from './types';
 import type { CardSpec } from './card/CardSheet';
 
-export type Tab = 'home' | 'feed' | 'radar' | 'wallet' | 'leaders' | 'ranks' | 'chats' | 'me' | 'promote' | 'admin';
+export type Tab = 'home' | 'feed' | 'radar' | 'cards' | 'wallet' | 'leaders' | 'ranks' | 'chats' | 'me' | 'promote' | 'admin';
 export interface Route { tab: Tab; coin?: string; trader?: string; user?: string; chat?: string; section?: 'chats' | 'friends' }
 export interface TradeIntent { coinId: string; side: Side; usd?: number; via?: string }
 

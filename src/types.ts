@@ -168,6 +168,8 @@ export interface UserState {
   orders: Order[];
   following: string[]; // wallet addresses
   theses: Thesis[];
+  /** trading cards kept in the Cards tab (numbers frozen when the card was made) */
+  cards?: SavedCard[];
   equity: { t: number; v: number }[];
 }
 
@@ -184,4 +186,12 @@ export interface State {
   loaded: boolean; // first discovery round finished
   solPrice?: number; // SOL/USD from Jupiter, for the home page
   snapshotAt?: number; // set when no source answered and the bundled real snapshot is shown instead
+}
+
+export interface SavedCard {
+  id: string;
+  t: number;
+  /** what the card is of, so the same trade isn't saved twice (e.g. "trade:x123") */
+  key: string;
+  data: import('./card/tradingCard').CardData;
 }

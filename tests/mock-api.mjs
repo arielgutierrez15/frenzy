@@ -87,6 +87,8 @@ export const makeMock = (opts = {}) => {
     if (u.hostname === 'api.mainnet-beta.solana.com') {
       const body = JSON.parse(r.request().postData() || '{}');
       if (body.method === 'getTokenSupply') return json({ result: { value: { uiAmount: 1e9 } } });
+      // a mint account, as the Boost token check reads it
+      if (body.method === 'getAccountInfo') return json({ result: { context: { slot: 1 }, value: { owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', lamports: 1, data: { program: 'spl-token', parsed: { type: 'mint', info: { decimals: 6, supply: '1000000000000', isInitialized: true } } } } } });
       return json({ result: { value: wallets.map((a, i) => ({ address: a, uiAmount: 1e9 * (0.2 - i * 0.04) })) } });
     }
     return r.abort();

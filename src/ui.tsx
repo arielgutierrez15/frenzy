@@ -26,6 +26,7 @@ export const Icon = {
   plus: I(<path d="M12 5v14M5 12h14" />),
   share: I(<><path d="M12 3v12M7 8l5-5 5 5" /><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></>),
   filter: I(<path d="M4 5h16l-6 7.5V19l-4-2v-4.5L4 5z" />),
+  card: I(<><rect x="3" y="5" width="14" height="16" rx="2.5" /><path d="M7 3h11a3 3 0 0 1 3 3v12" /><path d="M6.5 16l3-4 2.5 2 3-4.5" /></>),
   chat: I(<><path d="M4 5h16v11H9l-5 4V5z" /><path d="M8 9.5h8M8 12.5h5" /></>),
   users: I(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 4 6" /></>),
   chart: I(<><path d="M4 19V5M4 19h16" /><path d="M8 15l4-5 3 3 5-7" /></>),

@@ -5,12 +5,20 @@ import { WalletBar } from '../trading/WalletBar';
 import { useWallet } from '../trading/walletStore';
 import { signTransactionB64 } from '../trading/wallet';
 import {
-  boostPreview, createOrder, orderTransaction, submitOrderPayment, verifyOrder, getOrder, getServerConfig, newKey, ApiErr, NO_SERVER,
+  boostPreview, createOrder, testPayOrder, orderTransaction, submitOrderPayment, verifyOrder, getOrder, getServerConfig, newKey, ApiErr, NO_SERVER,
   type ServerConfig, type TokenInfo, type Order, type Pkg,
 } from '../trading/api';
 import { ago } from '../format';
 
 const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+/** base58 encoding (Solana addresses) */
+function b58(bytes: Uint8Array): string {
+  const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const digits: number[] = [];
+  for (const byte of bytes) { let carry = byte; for (let j = 0; j < digits.length; j++) { carry += digits[j] << 8; digits[j] = carry % 58; carry = (carry / 58) | 0; } while (carry) { digits.push(carry % 58); carry = (carry / 58) | 0; } }
+  let out = ''; for (const b of bytes) { if (b === 0) out += '1'; else break; }
+  return out + digits.reverse().map((d) => A[d]).join('');
+}
 const STORE = 'bagz.boost.orders';
 let pendingMint = '';
 /** open the Promote page pre-filled with a token */
@@ -99,6 +107,25 @@ export function PromoteView() {
     } catch (e: any) { setErr(e?.message || 'Payment failed'); }
     finally { busy.current = false; setStage(''); }
   };
+  // TEST COPY ONLY: order + fake payment, no wallet, no money
+  const testPay = async () => {
+    if (!token || !chosen || busy.current) return;
+    busy.current = true; setErr('');
+    try {
+      setStage('Placing a test order');
+      let who = '';
+      try { who = localStorage.getItem('bagz.testcopy.advertiser') || ''; } catch { /* ignore */ }
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(who)) {
+        who = b58(crypto.getRandomValues(new Uint8Array(32))); // a valid (unused) Solana address stands in for a wallet
+        try { localStorage.setItem('bagz.testcopy.advertiser', who); } catch { /* ignore */ }
+      }
+      const created = await createOrder({ mint: token.mint, package: pkg, advertiser: who, idempotencyKey: newKey() });
+      remember(created.order.id);
+      const paid = await testPayOrder(created.order.id);
+      setOrder(paid.order);
+    } catch (e: any) { setErr(e?.message || 'Test order failed'); }
+    finally { busy.current = false; setStage(''); }
+  };
   const recheck = async () => { if (!order || busy.current) return; busy.current = true; setStage('Checking for your payment'); await waitForVerification(order); busy.current = false; setStage(''); };
 
   return (
@@ -145,11 +172,19 @@ export function PromoteView() {
 
       <div className="panel">
         <h2>3 · Pay with USDC on Solana</h2>
+        {cfg?.testCopy ? (
+          <>
+            <p className="test-copy-note small"><b>Test copy:</b> no wallet or money. A test payment marks the order as paid so you can try review, approval and the Sponsored row. Real payments use USDC once the Worker is deployed.</p>
+            <button className="btn btn-accent" disabled={!token || !chosen || !!stage} onClick={testPay}>{stage || (!token ? 'Check a token first' : `Place order with a test payment ($${chosen?.usdc ?? ''})`)}</button>
+            <button className="link small" onClick={() => nav.go('admin')}>Open the review desk</button>
+          </>
+        ) : <>
         <WalletBar compact />
         <button className="btn btn-accent" disabled={!payOn || !ws.conn || !token || !chosen || !!stage} onClick={pay}>
           {stage || (!payOn ? 'Payments switched off' : !ws.conn ? 'Connect a wallet first' : !token ? 'Check a token first' : `Pay ${chosen?.usdc ?? ''} USDC`)}
         </button>
         <p className="muted small">Your wallet shows the exact USDC transfer before you sign. BAGZ checks the payment on-chain (USDC, amount, recipient and this order’s reference) before the order goes to review. Network fees are a fraction of a cent in SOL.</p>
+        </>}
         {err && <p className="small warn">{err}</p>}
         {order && (
           <div className="promo-order">
@@ -160,7 +195,7 @@ export function PromoteView() {
                 <button className="btn btn-ghost btn-sm" onClick={recheck} disabled={!!stage}>Check payment</button>
               </>
             )}
-            {order.status === 'pending_review' && <p className="small up">Payment verified. Your listing goes live once BAGZ approves it.</p>}
+            {order.status === 'pending_review' && <p className="small up">{cfg?.testCopy ? 'Test payment recorded.' : 'Payment verified.'} Your listing goes live once BAGZ approves it.</p>}
           </div>
         )}
       </div>

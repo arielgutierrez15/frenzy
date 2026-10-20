@@ -310,3 +310,24 @@ test('a misconfigured BOOST receiving account blocks orders instead of taking mo
   assert.equal(r.status, 503);
   assert.equal((s.db.db.prepare('SELECT COUNT(*) AS n FROM promotions').get() as any).n, 0);
 });
+
+test('test-copy payment and review: only when TEST_COPY is set, never in production', async () => {
+  const s = await setup();
+  const o = await order(s, 'starter');
+  // production: the fake payment route does not exist, and a BAGZ user session is not an admin session
+  assert.equal((await s.call(`/boost/orders/${o.id}/test-pay`, {})).status, 404);
+  const su = await s.call('/auth/signup', { username: 'tester1', password: 'password123' });
+  assert.equal((await s.call('/admin/promotions', undefined, { token: su.body.token })).status, 401);
+  // test copy: fake payment → review → approve with a normal account → live
+  s.env.TEST_COPY = '1';
+  const paid = await s.call(`/boost/orders/${o.id}/test-pay`, {});
+  assert.equal(paid.status, 200);
+  assert.equal(paid.body.order.status, 'pending_review');
+  assert.equal((s.db.db.prepare('SELECT signature FROM payments').get() as any).signature, `TEST-PAYMENT-${o.id}`);
+  const list = await s.call('/admin/promotions', undefined, { token: su.body.token });
+  assert.equal(list.status, 200);
+  assert.equal(list.body.promotions.length, 1);
+  assert.equal((await s.call(`/admin/promotions/${o.id}/approve`, {}, { token: su.body.token })).body.order.status, 'approved');
+  assert.equal((await s.call('/boost/active')).body.campaigns.length, 1);
+  assert.equal((await s.call('/config')).body.testCopy, true);
+});
