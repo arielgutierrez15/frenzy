@@ -74,7 +74,7 @@ function startWorker(live: boolean) {
     ALLOWED_ORIGINS: `${APP},${APP_LIVE}`, JUPITER_API_KEY: 'SECRET-JUP', Db: db,
     ENABLE_LIVE_SWAPS: live ? 'true' : 'false', ENABLE_LIVE_BOOST_PAYMENTS: 'true', BAGZ_PLATFORM_FEE_BPS: '50',
     FEE_WALLET: feeOwner, FEE_ACCOUNT_WSOL: feeWsol, FEE_ACCOUNT_USDC: feeUsdc, BOOST_WALLET: boostOwner, BOOST_USDC_ACCOUNT: boostUsdc,
-    ADMIN_WALLETS: user.address, ADMIN_SESSION_SECRET: 'z'.repeat(40),
+    ADMIN_WALLETS: user.address, ADMIN_SESSION_SECRET: 'z'.repeat(40), PASSWORD_ITERATIONS: '10000',
     ...['JUP', 'GT', 'DS', 'PUMP', 'RUG', 'RPC'].reduce((o, k) => ({ ...o, ['UPSTREAM_PER_MIN_' + k]: '5000' }), {}), RATE_PER_MIN: '5000', RATE_POST_PER_MIN: '5000',
   };
   const viaMock = (url0: string, init: any = {}) => new Promise<Response>((res, rej) => {
@@ -119,6 +119,16 @@ const WALLET = (address: string) => `(() => {
   window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', { detail: (api) => api.register(wallet) }));
 })();`;
 
+// this suite is about swaps and Boost, so a BAGZ account with a picture is created up front (accounts have their own suite)
+async function makeSession() {
+  const env = { ALLOWED_ORIGINS: APP, Db: db, PASSWORD_ITERATIONS: '10000', RATE_POST_PER_MIN: '5000' };
+  const call = async (path: string, body: unknown, token?: string) => (await handle(new Request(`http://w${path}`, { method: 'POST', headers: { origin: APP, 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) }), env, undefined, { fetch: chain.fetch, cache: null })).json();
+  const r = await call('/v1/auth/signup', { username: 'swaptester', password: 'swap-tester-pw' });
+  const png = 'data:image/png;base64,' + Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 1)]).toString('base64');
+  await call('/v1/me/avatar', { image: png }, r.token);
+  return r.token as string;
+}
+const SESSION = await makeSession();
 const browser = await chromium.launch();
 async function open(origin: string, proxy: string, o: { mobile?: boolean; wallet?: boolean; hash?: string } = {}) {
   const ctx = await browser.newContext(o.mobile
@@ -126,6 +136,7 @@ async function open(origin: string, proxy: string, o: { mobile?: boolean; wallet
     : { viewport: { width: 1280, height: 900 } });
   const p = await ctx.newPage();
   await p.addInitScript({ content: FAKE_LWC });
+  await p.addInitScript({ content: `try { localStorage.setItem('bagz.session', ${JSON.stringify(SESSION)}); } catch (e) {}` });
   if (o.wallet !== false) {
     await p.exposeFunction('__nodeSignTx', async (b64: string) => {
       const bytes = sol.b64decode(b64); const t = sol.parseTransaction(bytes);

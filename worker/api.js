@@ -21,6 +21,7 @@ import {
   fromApiInstruction, setComputeUnitLimitIx, setComputeUnitPriceIx, transferCheckedIx, memoIx, verifyEd25519, sha256hex, randomBytes,
   PROGRAMS, MINTS, eqBytes,
 } from './solana.js';
+import { social } from './social.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -656,6 +657,7 @@ export function publicConfig(env) {
     liveSwaps: c.liveSwaps, liveBoostPayments: c.liveBoostPayments, feeBps: c.feeBps,
     feeAccounts: { wsol: isPubkey(c.feeAccounts[MINTS.wsol]), usdc: isPubkey(c.feeAccounts[MINTS.usdc]) },
     boostConfigured: isPubkey(c.boostAccount), adminConfigured: c.admins.length > 0, database: !!database(env),
+    accounts: !!database(env),
     jupiterKey: !!env.JUPITER_API_KEY, rpc: env.SOLANA_RPC_URL ? 'custom' : env.HELIUS_API_KEY ? 'helius' : 'public',
     packages: Object.entries(PACKAGES).map(([id, p]) => ({ id, label: p.label, usdc: p.usdc, hours: p.hours })),
   };
@@ -669,12 +671,14 @@ export async function api(request, env, deps) {
   let body = {};
   if (method === 'POST') {
     const text = await request.text();
-    if (text.length > 8000) throw new ApiError(413, 'Body too large');
+    if (text.length > (path === '/me/avatar' ? 220_000 : 8000)) throw new ApiError(413, 'Body too large');
     if (text) { try { body = JSON.parse(text); } catch { throw bad('Invalid JSON'); } }
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad('Body must be a JSON object');
   }
   const route = (m, re) => method === m && re.exec(path);
   let p;
+  const s = await social(ctx, request, path, body, url);
+  if (s !== undefined) return s;
   if (route('GET', /^\/config$/)) return publicConfig(env);
   if (route('GET', /^\/wallet\/balances$/)) return balances(ctx, url.searchParams.get('owner'));
   if (route('POST', /^\/swap\/prepare$/)) return swapPrepare(ctx, body);

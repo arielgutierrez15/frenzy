@@ -2,13 +2,16 @@ import { createContext, useContext } from 'react';
 import type { Side } from './types';
 import type { CardSpec } from './card/CardSheet';
 
-export type Tab = 'home' | 'feed' | 'radar' | 'wallet' | 'leaders' | 'promote' | 'admin';
-export interface Route { tab: Tab; coin?: string; trader?: string }
+export type Tab = 'home' | 'feed' | 'radar' | 'wallet' | 'leaders' | 'ranks' | 'chats' | 'me' | 'promote' | 'admin';
+export interface Route { tab: Tab; coin?: string; trader?: string; user?: string; chat?: string; section?: 'chats' | 'friends' }
 export interface TradeIntent { coinId: string; side: Side; usd?: number; via?: string }
 
 export interface Nav {
   route: Route;
-  go: (tab: Tab) => void;
+  go: (tab: Tab, opts?: { section?: 'chats' | 'friends' }) => void;
+  /** a BAGZ user's public profile */
+  openUser: (username: string) => void;
+  openChat: (id: string) => void;
   openCoin: (id: string) => void;
   openTrader: (id: string) => void;
   back: () => void;

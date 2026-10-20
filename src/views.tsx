@@ -21,6 +21,7 @@ import { LiveSwap } from './trading/LiveSwap';
 import { proxyBase } from './providers/config';
 import { SponsoredStrip } from './boost/Sponsored';
 import { Badge } from './brand';
+import { FriendsFeed } from './social/ui';
 import { setPromoteMint } from './boost/PromoteView';
 import { ConnectedWalletPanel } from './trading/ConnectedWallet';
 
@@ -152,7 +153,7 @@ function ThesisCard({ th }: { th: Thesis }) {
   );
 }
 
-type FeedFilter = 'all' | 'big' | 'following' | 'you';
+type FeedFilter = 'all' | 'friends' | 'big' | 'following' | 'you';
 export function FeedView() {
   const st = useStore();
   const nav = useNav();
@@ -166,8 +167,8 @@ export function FeedView() {
           <p className="muted">Real swaps from real wallets, pulled from GeckoTerminal for the most active pools and the coins you hold. Follow a wallet to get alerts when it trades.</p>
         </div>
       </header>
-      <Seg label="Feed filter" value={f} onChange={setF} options={[{ v: 'all', l: 'All swaps' }, { v: 'big', l: '≥ $1K' }, { v: 'following', l: `Following · ${st.user.following.length}` }, { v: 'you', l: 'You' }]} />
-      <DataGate>
+      <Seg label="Feed filter" value={f} onChange={setF} options={[{ v: 'all', l: 'All swaps' }, { v: 'friends', l: 'Friends' }, { v: 'big', l: '≥ $1K' }, { v: 'following', l: `Following · ${st.user.following.length}` }, { v: 'you', l: 'You' }]} />
+      {f === 'friends' ? <FriendsFeed /> : <DataGate>
         {f === 'you' ? (
           st.user.theses.length || st.user.trades.length ? (
             <div className="post-list">
@@ -180,10 +181,10 @@ export function FeedView() {
         ) : (
           <Empty
             title={f === 'following' ? 'No swaps from wallets you follow yet' : 'Waiting for swaps'}
-            body={f === 'following' ? 'Open a wallet from the feed or the Wallets tab and follow it. Its next swap lands here.' : st.snapshotAt ? 'Real-time swaps need live data, which this page can’t reach. Gem Radar shows the snapshot.' : st.sources['gt-trades']?.ok === false ? `GeckoTerminal trades didn’t load (${st.sources['gt-trades']?.error}). It retries every 30 seconds.` : 'The first batch of real swaps arrives within 30 seconds.'}
+            body={f === 'following' ? 'Open a wallet from the feed or Ranks → On-chain wallets and follow it. Its next swap lands here.' : st.snapshotAt ? 'Real-time swaps need live data, which this page can’t reach. Gem Radar shows the snapshot.' : st.sources['gt-trades']?.ok === false ? `GeckoTerminal trades didn’t load (${st.sources['gt-trades']?.error}). It retries every 30 seconds.` : 'The first batch of real swaps arrives within 30 seconds.'}
           />
         )}
-      </DataGate>
+      </DataGate>}
     </section>
   );
 }
@@ -747,7 +748,12 @@ export function WalletView() {
 // ======================================================================
 // WALLETS (real wallets seen on-chain) + WALLET PAGE
 // ======================================================================
-export function LeadersView() {
+/** standalone page, or embedded inside another view (no own section) */
+function ViewWrap({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
+  return embedded ? <>{children}</> : <section className="view">{children}</section>;
+}
+
+export function LeadersView({ embedded = false }: { embedded?: boolean }) {
   const st = useStore();
   const nav = useNav();
   const [by, setBy] = useState<'vol' | 'trades' | 'following'>('vol');
@@ -756,13 +762,14 @@ export function LeadersView() {
   if (by === 'trades') rows = rows.sort((a, b) => b.buys + b.sells - (a.buys + a.sells));
   if (by === 'following') rows = rows.filter((w) => st.user.following.includes(w.address));
   return (
-    <section className="view">
+    <ViewWrap embedded={embedded}>
+      {embedded ? <p className="muted small">Real wallets seen swapping in the pools BAGZ watches, ranked by volume this session.</p> : (
       <header className="view-head">
         <div>
           <h1>Wallets</h1>
-          <p className="muted">Real wallets seen swapping in the pools BAGZ watches, ranked by volume this session. Nobody else uses BAGZ yet, so there’s no user leaderboard. Your paper wallet is shown on its own.</p>
+          <p className="muted">Real wallets seen swapping in the pools BAGZ watches, ranked by volume this session. Your paper wallet is shown on its own.</p>
         </div>
-      </header>
+      </header>)}
       <button className="you-row" onClick={() => nav.go('wallet')}>
         <Avatar you />
         <div className="stack"><b>Your paper wallet</b><span className="muted small num">{st.user.trades.length} trades · {s.sells ? `${s.winRate.toFixed(0)}% wins` : 'no closed trades'}</span></div>
@@ -789,7 +796,7 @@ export function LeadersView() {
           </ol>
         ) : <Empty title={by === 'following' ? 'You don’t follow any wallets' : 'No wallets seen yet'} body={by === 'following' ? 'Tap a wallet in the Live feed to follow it.' : 'Wallets appear as real swaps come in, within about 30 seconds.'} />}
       </DataGate>
-    </section>
+    </ViewWrap>
   );
 }
 

@@ -24,6 +24,9 @@ ENABLE_LIVE_SWAPS = "false"
 ENABLE_LIVE_BOOST_PAYMENTS = "false"
 # BAGZ platform fee in basis points (50 = 0.50%). 0 or an invalid value makes swaps refuse to run, never run fee-free.
 BAGZ_PLATFORM_FEE_BPS = "50"
+# Password hashing strength for BAGZ accounts (PBKDF2 iterations, max 100000). On the Workers Free plan (10 ms CPU per
+# request) sign-ups can fail with "exceeded CPU"; then either upgrade to Workers Paid or uncomment a lower value:
+# PASSWORD_ITERATIONS = "20000"
 # cap on the priority fee BAGZ will put in a swap (micro-lamports per compute unit)
 MAX_CU_PRICE_MICROLAMPORTS = "1000000"
 

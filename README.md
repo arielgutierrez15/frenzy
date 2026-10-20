@@ -53,7 +53,7 @@ Settings → Pages → Deploy from a branch → `main` → `/docs`. The site is 
 
 ## Deploy the Worker from the Cloudflare dashboard (no terminal)
 
-1. **D1 tables (once):** Cloudflare → Storage & Databases → D1 → your database → Console. Paste the whole of `worker/migrations/0001_swap_boost.sql` and run it.
+1. **D1 tables (once):** Cloudflare → Storage & Databases → D1 → your database → Console. Paste the whole of `worker/migrations/0001_swap_boost.sql` and run it, then the whole of `worker/migrations/0002_social.sql`.
 2. **Config:** in `worker/wrangler.toml` set `name` to your Worker's exact name, and `database_name` / `database_id` to your D1 database (shown on its page). Commit.
 3. **Connect the repo:** Workers & Pages → your Worker → Settings → Build → connect `arielgutierrez15/frenzy`, branch `main`, root directory `worker`, deploy command `npx wrangler deploy`. Every push to `main` then redeploys the Worker.
 4. **Secrets:** Worker → Settings → Variables and Secrets → add `JUPITER_API_KEY`, `HELIUS_API_KEY`, `ADMIN_SESSION_SECRET` (32+ random characters), `ANALYTICS_SALT`, `PROBE_TOKEN` as **Secret** type.
@@ -140,6 +140,19 @@ The fee token accounts must exist before swaps are enabled (create the wSOL and 
 3. With a throw-away wallet and tiny amounts on mainnet, with `ENABLE_LIVE_SWAPS="true"` and a `BAGZ_LIVE_TRADING=1` build served from a test URL: a buy and a sell on a SOL pair, a rejected signature, an expired quote, slippage exceeded. Check each fee transfer on Solscan.
 4. A $10 Starter BOOST paid in-app and one paid via the Solana Pay link; approve, watch it go live and expire.
 5. Decide and publish a refund policy for rejected listings (refunds are manual).
+
+## Accounts, leaderboard, friends and chats
+
+Needs the Worker with D1 (`0002_social.sql`). Until then the app runs without accounts and these screens say they're offline.
+
+- **First visit:** a sign-up screen comes before the app: username (3–20 letters, numbers, `_`), password (8+), then a profile picture (cropped and shrunk to 320×320 in the browser). Then the home screen. Returning users sign in.
+- **Public profile** (`#me`, or tap anyone): picture, bio, joined date, friends, leaderboard rank, paper-trading stats and recent paper trades/calls. Change picture, edit bio, log out, delete account.
+- **Ranks tab:** public leaderboard (Everyone / Friends) by PnL %, profit or win rate, plus the on-chain wallets list. Stats come from each user's paper wallet and are labelled "reported by the BAGZ app": the server range-checks them and derives PnL itself, but can't independently verify paper trades.
+- **Chats tab:** group chats with friends (create, add friends, leave; updates every 3 s while open) and Friends (search usernames, requests, accept/decline). Only friends can be added to a group.
+- **Live tab → Friends:** your friends' paper trades and calls.
+- **Security:** PBKDF2-SHA256 passwords (`PASSWORD_ITERATIONS`, default 100,000), random 30-day session tokens stored only as hashes, sign-in throttling per username and per network, picture type checked by content (PNG/JPEG/WebP, 150 KB max).
+- **Telegram:** the same sign-up works inside the Mini App; the session is also kept in Telegram Cloud Storage, so it survives Telegram clearing the webview.
+- Tested with `npm run test:social` (two users + a Telegram user, real Worker code, 43 checks) and `tests/api-social.test.ts`.
 
 ## Trading cards
 

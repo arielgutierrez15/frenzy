@@ -5,7 +5,7 @@
  *  - Wallet: real Ed25519 keys (WebCrypto), signing the exact bytes BAGZ returns, like a wallet would.
  */
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 // @ts-ignore plain JS
@@ -15,7 +15,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export class D1 {
   db = new DatabaseSync(':memory:');
-  constructor() { this.db.exec(readFileSync(resolve(root, 'worker/migrations/0001_swap_boost.sql'), 'utf8')); }
+  constructor() {
+    // D1 enforces foreign keys; mirror that, then apply every migration in order like `wrangler d1 migrations apply`
+    this.db.exec('PRAGMA foreign_keys = ON');
+    for (const f of readdirSync(resolve(root, 'worker/migrations')).filter((x) => x.endsWith('.sql')).sort()) this.db.exec(readFileSync(resolve(root, 'worker/migrations', f), 'utf8'));
+  }
   prepare(sql: string) {
     const db = this.db;
     const mk = (args: unknown[]) => {
@@ -24,7 +28,7 @@ export class D1 {
         bind: (...more: unknown[]) => mk(more),
         first: async (col?: string) => { const r = db.prepare(sql).get(...(a as any[])) as any; return r === undefined ? null : col ? r[col] : { ...r }; },
         all: async () => ({ results: (db.prepare(sql).all(...(a as any[])) as any[]).map((r) => ({ ...r })) }),
-        run: async () => { const r = db.prepare(sql).run(...(a as any[])); return { meta: { changes: Number(r.changes) } }; },
+        run: async () => { const r = db.prepare(sql).run(...(a as any[])); return { meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } }; },
         _exec: () => { const r = db.prepare(sql).run(...(a as any[])); return { meta: { changes: Number(r.changes) } }; },
       };
     };

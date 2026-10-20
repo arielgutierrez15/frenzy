@@ -15,6 +15,7 @@
  *          GET|POST /v1/…   swaps with the BAGZ fee, BOOST listings, admin review (see api.js; needs the D1 binding "Db")
  */
 import { api, ApiError, publicConfig } from './api.js';
+import { avatarResponse } from './social.js';
 
 const VERSION = '1.2.0';
 const B58 = '[1-9A-HJ-NP-Za-km-z]{32,44}';
@@ -171,6 +172,19 @@ export async function handle(request, env, ctx, deps = {}) {
   if (url.pathname === '/health') {
     const c = publicConfig(env);
     return json({ ok: true, version: VERSION, providers: Object.keys(PROVIDERS), keys: { jupiter: !!env.JUPITER_API_KEY, coingecko: !!env.COINGECKO_API_KEY, rpc: !!(env.SOLANA_RPC_URL || env.HELIUS_API_KEY) }, protection: { origins: allowedOrigins(env).length, rateLimiter: !!env.RATE_LIMITER, probeToken: !!env.PROBE_TOKEN }, features: { liveSwaps: c.liveSwaps, liveBoostPayments: c.liveBoostPayments, feeBps: c.feeBps, database: c.database } }, 200, base);
+  }
+  // profile pictures are loaded by <img> tags, which send no Origin header; they are public and edge-cached
+  const av = /^\/v1\/avatars\/([1-9A-HJ-NP-Za-km-z]{16,32})$/.exec(url.pathname);
+  if (av && request.method === 'GET') {
+    const ip = request.headers.get('cf-connecting-ip') || 'anon';
+    if (over(`av:${ip}`, num(env.RATE_AVATAR_PER_MIN, 1200), 60_000, now)) return new Response('Too many requests', { status: 429, headers: { 'retry-after': '30' } });
+    const key = new Request(url.toString(), { method: 'GET' });
+    if (cache) { const hit = await cache.match(key); if (hit) return hit; }
+    try {
+      const res = await avatarResponse({ env, now: () => now }, av[1]);
+      if (cache && res.status === 200) { const put = cache.put(key, res.clone()); if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put; }
+      return res;
+    } catch { return new Response('Unavailable', { status: 503 }); }
   }
   if (url.pathname.startsWith('/v1/')) {
     if (!good && !probeOk) return json({ error: 'This API only serves the BAGZ web app' }, 403, base);

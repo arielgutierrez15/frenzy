@@ -124,10 +124,13 @@ if (cfg.status === 200) {
   log({ name: 'API config reachable', result: 'PASS', detail: `liveSwaps=${c.liveSwaps} liveBoostPayments=${c.liveBoostPayments} feeBps=${c.feeBps} db=${c.database} rpc=${c.rpc}` });
   log({ name: 'platform fee is 50 bps', result: c.feeBps === 50 ? 'PASS' : 'FAIL', detail: String(c.feeBps) });
   log({ name: 'D1 binding "Db" connected', result: c.database ? 'PASS' : 'FAIL', detail: String(c.database) });
+  log({ name: 'accounts enabled (sign-up screen will show)', result: c.accounts ? 'PASS' : 'FAIL', detail: String(c.accounts) });
   log({ name: 'fee accounts configured', result: c.feeAccounts?.wsol && c.feeAccounts?.usdc ? 'PASS' : 'WARN', detail: JSON.stringify(c.feeAccounts) });
   log({ name: 'BOOST receiving account configured', result: c.boostConfigured ? 'PASS' : 'WARN', detail: String(c.boostConfigured) });
   log({ name: 'live money switches are OFF', result: !c.liveSwaps && !c.liveBoostPayments ? 'PASS' : 'WARN', detail: 'expected OFF until reviews are complete' });
 } else log({ name: 'API config reachable', result: 'FAIL', detail: `HTTP ${cfg.status}` });
+const lb = await call('/v1/leaderboard');
+log({ name: 'leaderboard (accounts tables migrated)', result: lb.status === 200 ? 'PASS' : 'FAIL', detail: `HTTP ${lb.status}${lb.status !== 200 ? ' — run worker/migrations/0002_social.sql' : ''}` });
 const active = await call('/v1/boost/active');
 log({ name: 'BOOST active list (D1 query)', result: active.status === 200 ? 'PASS' : 'FAIL', detail: `HTTP ${active.status} · ${(active.json as any)?.campaigns?.length ?? '?'} live campaigns` });
 
