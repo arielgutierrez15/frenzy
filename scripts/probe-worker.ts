@@ -115,7 +115,21 @@ if (orderRaw.status === 200) {
   } catch (e: any) { log({ name: 'Jupiter swap quote', result: 'FAIL', detail: e.message }); }
 } else log({ name: 'Jupiter swap quote', result: 'FAIL', detail: `HTTP ${orderRaw.status} ${(orderRaw.json as any)?.error || ''}` });
 const exec = await call('/p/jup/swap/v2/execute', { method: 'POST', body: { signedTransaction: 'not-a-transaction', requestId: 'probe' } });
-log({ name: 'swap execute rejects an invalid body at the Worker', result: exec.status === 400 ? 'PASS' : 'FAIL', detail: `HTTP ${exec.status}` });
+log({ name: 'fee-less Jupiter execute relay is closed', result: exec.status === 403 ? 'PASS' : 'FAIL', detail: `HTTP ${exec.status}` });
+
+// ---- 5. BAGZ API (/v1): configuration and switches. Never prepares, signs or sends anything.
+const cfg = await call('/v1/config');
+if (cfg.status === 200) {
+  const c = cfg.json as any;
+  log({ name: 'API config reachable', result: 'PASS', detail: `liveSwaps=${c.liveSwaps} liveBoostPayments=${c.liveBoostPayments} feeBps=${c.feeBps} db=${c.database} rpc=${c.rpc}` });
+  log({ name: 'platform fee is 50 bps', result: c.feeBps === 50 ? 'PASS' : 'FAIL', detail: String(c.feeBps) });
+  log({ name: 'D1 binding "Db" connected', result: c.database ? 'PASS' : 'FAIL', detail: String(c.database) });
+  log({ name: 'fee accounts configured', result: c.feeAccounts?.wsol && c.feeAccounts?.usdc ? 'PASS' : 'WARN', detail: JSON.stringify(c.feeAccounts) });
+  log({ name: 'BOOST receiving account configured', result: c.boostConfigured ? 'PASS' : 'WARN', detail: String(c.boostConfigured) });
+  log({ name: 'live money switches are OFF', result: !c.liveSwaps && !c.liveBoostPayments ? 'PASS' : 'WARN', detail: 'expected OFF until reviews are complete' });
+} else log({ name: 'API config reachable', result: 'FAIL', detail: `HTTP ${cfg.status}` });
+const active = await call('/v1/boost/active');
+log({ name: 'BOOST active list (D1 query)', result: active.status === 200 ? 'PASS' : 'FAIL', detail: `HTTP ${active.status} · ${(active.json as any)?.campaigns?.length ?? '?'} live campaigns` });
 
 finish();
 

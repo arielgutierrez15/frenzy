@@ -1,13 +1,11 @@
 /**
- * Jupiter Swap API V2 (https://api.jup.ag/swap/v2):  GET /order → quote + unsigned transaction,
- * POST /execute → Jupiter lands the signed transaction.  Reached through the BAGZ proxy so the API key stays server-side.
+ * Jupiter Swap API V2 GET /order, used ONLY as a quote preview before a wallet is connected (no taker, no transaction).
  * Request/response fields follow developers.jup.ag/docs/swap/order-and-execute (checked 18 Oct 2026).
  *
- * Live execution is locked by flags.ts. Quotes are always allowed (no signature, no funds move).
+ * Real swaps never use /order → /execute: those carry no BAGZ fee. They are built by the BAGZ server with Jupiter
+ * /build and the 0.50% platform fee (worker/api.js) and run through bagzSwap.ts.
  */
 import { request, ValidationError, type Result } from '../providers/http';
-import { liveTradingEnabled, TradingDisabledError } from './flags';
-import { signTransactionB64, type Connected } from './wallet';
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const DIGITS = /^\d+$/;
@@ -93,74 +91,4 @@ export function estimateCostVsMarket(o: { inAmount: number; outAmount: number; m
   if (!(inAmount > 0) || !(outAmount > 0) || !(marketPriceInOut > 0)) return undefined;
   // marketPriceInOut = how many OUT units one IN unit is worth at market
   return (1 - outAmount / (inAmount * marketPriceInOut)) * 100;
-}
-
-// ---------------------------------------------------------------------------
-// execution (locked)
-// ---------------------------------------------------------------------------
-export interface ExecuteResponse { status: 'Success' | 'Failed'; signature?: string; code?: number; error?: string; totalInputAmount?: string; totalOutputAmount?: string }
-export function parseExecute(j: unknown): ExecuteResponse {
-  if (!isObj(j) || (j.status !== 'Success' && j.status !== 'Failed')) throw new ValidationError('Jupiter execute: unexpected status');
-  return {
-    status: j.status, signature: typeof j.signature === 'string' ? j.signature : undefined, code: fin(j.code), error: typeof j.error === 'string' ? j.error : undefined,
-    totalInputAmount: typeof j.totalInputAmount === 'string' ? j.totalInputAmount : undefined, totalOutputAmount: typeof j.totalOutputAmount === 'string' ? j.totalOutputAmount : undefined,
-  };
-}
-
-export type Confirmation = { state: 'confirmed' | 'finalized' } | { state: 'failed'; error: string } | { state: 'unknown' };
-/** Polls getSignatureStatuses until the signature is confirmed/finalized, failed, or the timeout passes (then "unknown", never "success"). */
-export async function confirmSignature(signature: string, o: { timeoutMs?: number; intervalMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number } = {}): Promise<Confirmation> {
-  const sleep = o.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-  const now = o.now || (() => Date.now());
-  const end = now() + (o.timeoutMs ?? 60_000);
-  while (now() < end) {
-    const r = await request({
-      source: 'sol-confirm', path: '', method: 'POST', prio: 0, force: true,
-      body: { jsonrpc: '2.0', id: 1, method: 'getSignatureStatuses', params: [[signature], { searchTransactionHistory: true }] },
-      validate: (j) => { if (!isObj(j) || !isObj(j.result)) throw new ValidationError('RPC: no result'); return j; },
-    });
-    const s = r.ok ? (r.data as any).result?.value?.[0] : undefined;
-    if (s) {
-      if (s.err) return { state: 'failed', error: JSON.stringify(s.err) };
-      if (s.confirmationStatus === 'finalized') return { state: 'finalized' };
-      if (s.confirmationStatus === 'confirmed') return { state: 'confirmed' };
-    }
-    await sleep(o.intervalMs ?? 2000);
-  }
-  return { state: 'unknown' };
-}
-
-export type SwapOutcome =
-  | { ok: true; signature: string; confirmation: { state: 'confirmed' | 'finalized' }; outAmount?: string }
-  | { ok: false; stage: 'quote' | 'sign' | 'execute'; error: string; signature?: string };
-
-/** Max age of the quote that gets signed. Older quotes are refused so the user never signs a stale price. */
-export const MAX_QUOTE_AGE_MS = 20_000;
-
-/**
- * Full flow: fresh quote with the wallet as taker → wallet signs → Jupiter /execute → confirm on-chain.
- * Throws TradingDisabledError unless live trading is enabled. The execute call is never retried automatically.
- */
-export async function executeSwap(input: Omit<QuoteInput, 'taker'>, wallet: Connected, hooks: { onStage?: (s: string) => void; sleep?: (ms: number) => Promise<void>; now?: () => number } = {}): Promise<SwapOutcome> {
-  if (!liveTradingEnabled()) throw new TradingDisabledError();
-  const now = hooks.now || (() => Date.now());
-  hooks.onStage?.('Getting a fresh quote');
-  const q = await getQuote({ ...input, taker: wallet.account.address });
-  if (!q.ok) return { ok: false, stage: 'quote', error: q.error };
-  const { quote } = q;
-  if (!quote.transaction || !quote.requestId) return { ok: false, stage: 'quote', error: quote.errorMessage || 'Jupiter returned a quote without a transaction' };
-  if (now() - quote.fetchedAt > MAX_QUOTE_AGE_MS) return { ok: false, stage: 'quote', error: 'Quote expired, try again' };
-  hooks.onStage?.('Waiting for your wallet to sign');
-  let signed: string;
-  try { signed = await signTransactionB64(wallet, quote.transaction); }
-  catch (e: any) { return { ok: false, stage: 'sign', error: e?.message || 'Signing failed' }; }
-  hooks.onStage?.('Sending through Jupiter');
-  const ex = await request({ source: 'jup-execute', path: '/swap/v2/execute', method: 'POST', body: { signedTransaction: signed, requestId: quote.requestId }, prio: 0, force: true, validate: parseExecute });
-  if (!ex.ok) return { ok: false, stage: 'execute', error: `${ex.error.message}. The swap may or may not have landed; check your wallet before retrying.` };
-  if (ex.data.status === 'Failed' || !ex.data.signature) return { ok: false, stage: 'execute', error: ex.data.error || `Jupiter reported failure (code ${ex.data.code ?? 'unknown'})`, signature: ex.data.signature };
-  hooks.onStage?.('Confirming on Solana');
-  const confirmation = await confirmSignature(ex.data.signature, { sleep: hooks.sleep, now: hooks.now });
-  if (confirmation.state === 'failed') return { ok: false, stage: 'execute', error: `Transaction failed on-chain: ${confirmation.error}`, signature: ex.data.signature };
-  if (confirmation.state === 'unknown') return { ok: false, stage: 'execute', error: 'Sent, but not confirmed in time. Check the signature on a block explorer before trying again.', signature: ex.data.signature };
-  return { ok: true, signature: ex.data.signature, confirmation, outAmount: ex.data.totalOutputAmount };
 }

@@ -10,12 +10,18 @@ Brand: black `#090909`, hot pink `#FF008C`, white. Green/red are used only for p
 |---|---|
 | Provider code, caching, rate limits, retries, validation, health panel | **Passed** automated tests against recorded response shapes (`npm test`) |
 | Worker: every endpoint on its own (CORS, allowlist, query/body validation, key injection, limits, error mapping, no secret leaks) | **Passed** 45 tests (`tests/worker*.test.ts`), stub upstream |
-| App ⇄ Worker over real HTTP with real browser CORS, phone layout | **Passed** 36 checks (`npm run test:e2e`): the real Worker code in a local server, the real built app in Chromium, mocked providers, fake chart library |
+| App ⇄ Worker over real HTTP with real browser CORS, phone layout | **Passed** 38 checks (`npm run test:e2e`): the real Worker code in a local server, the real built app in Chromium, mocked providers, fake chart library |
 | UI, charts wiring, ranges/intervals, live ticks, paper trading | **Passed** 52 browser checks (`npm run test:browser`), mocked API, fake chart library |
 | Worker deployed on Cloudflare (edge cache, rate-limit binding, secrets) | **Not tested.** Not deployed yet. `scripts/probe-worker.ts` tests the deployed Worker against the real providers |
 | Real provider responses | **Not tested live.** The build sandbox cannot reach the providers. Run the probe after deploying |
 | TradingView Lightweight Charts rendering | **Not tested.** The library could not be downloaded in the sandbox; a basic chart is the fallback |
-| Wallet connect, Jupiter quote → sign → execute → confirm | **Unit-tested with a fake wallet only. Switched off.** Never run on mainnet |
+| Swap transaction encoding (v0 + lookup tables, legacy) | **Passed** 8 tests (`tests/solana.test.ts`), cross-checked against Solana Kit 8.5.0 (independent implementation, test-only) |
+| Swaps with the 0.50% fee: build, simulate, sign, send once, confirm, read fee on-chain; tampering, stale quotes, duplicates, wrong/missing fee account | **Passed** 15 tests (`tests/api-swap.test.ts`), real Worker code, SQLite-backed D1, fake chain + Jupiter `/build` |
+| BOOST: packages, token checks, USDC payment build/verify, wrong mint/amount/recipient, reused payments, admin wallet sign-in, approval, scheduling, expiry, analytics | **Passed** 12 tests (`tests/api-boost.test.ts`) |
+| App client ⇄ Worker (wallet connect/reject/account switch, rejected signatures, double clicks, timeouts, balances, Boost + admin) | **Passed** 11 tests (`tests/client-flow.test.ts`), real Ed25519 signatures |
+| New screens in Chromium (Promote → pay → admin approve → labelled Sponsored row → impression/click; live swap UI with locks closed and open; balances; phone layouts; mobile wallet handoff) | **Passed** 32 checks (`npm run test:app`) |
+| Live swaps / BOOST payments on mainnet | **Not run. Switched off** (`ENABLE_LIVE_SWAPS`, `ENABLE_LIVE_BOOST_PAYMENTS`, `BAGZ_LIVE_TRADING`). Never executed against Jupiter or Solana for real |
+| Jupiter `/build` real responses, Phantom/Solflare/Backpack real apps | **Not tested.** No network access to them from the build sandbox; the fake follows the documented schema |
 | pump.fun feeds | Unofficial; may not work at all |
 
 ## Data sources (checked against vendor docs, 18 Oct 2026)
@@ -36,6 +42,7 @@ npm test               # unit + Worker endpoint tests
 node build.mjs         # writes docs/index.html (GitHub Pages) and dist/bagz.html
 npm run test:browser   # app in Chromium, mocked providers (needs Playwright + Chromium)
 npm run test:e2e       # app ⇄ real Worker code over HTTP with real CORS, mocked providers
+npm run test:app       # new screens (swap, Promote, admin, Sponsored) against the real Worker + D1, fake chain
 ```
 
 Without `npm install`, `node build.mjs` still works: the page then loads Lightweight Charts v4.2.0 from jsDelivr at runtime (or from `docs/vendor/` if you run `npm run vendor:charts`).
@@ -75,15 +82,40 @@ The site keeps working without it (calls go direct from the browser, with the li
 - **Abuse limits:** per-IP requests/min (`RATE_PER_MIN`, 240), stricter POSTs/min (`RATE_POST_PER_MIN`, 20), the optional Cloudflare binding, and a per-provider upstream budget per minute on cache misses (Jupiter 50, GeckoTerminal 80 with a key / 8 without, DexScreener 240, pump.fun 30, RugCheck 30, RPC 100; override with `UPSTREAM_PER_MIN_<ID>`), so one visitor cannot burn your keys. Limited answers are 429 with `Retry-After` and `x-bagz-limit`.
 - **Responses:** JSON only (anything else becomes 502), 2 MB cap, no redirects followed, upstream error bodies never forwarded, errors not cached, keys never echoed.
 
-## Real trading (off)
+## Swaps with the BAGZ fee, and BOOST (both OFF)
 
-`src/trading/` has Wallet Standard connection (Phantom, Solflare, Backpack), Jupiter Swap v2 `/order` → wallet signature → `/execute` → on-chain confirmation, with quote age limits, slippage, fee and impact display. No private key or seed phrase is ever requested or stored. Two locks keep it off: the build flag `BAGZ_LIVE_TRADING=1` and a check inside `executeSwap()`.
+### How it works
+- **Wallets:** Wallet Standard (Phantom, Solflare, Backpack and others register themselves). Account switches and disconnects made inside the wallet are followed. On a phone browser with no wallet, the app offers to open itself inside Phantom or Solflare (their documented `browse` deep links); Backpack users open the page in Backpack's own browser. No private key or seed phrase is ever requested or stored.
+- **Swaps:** the Worker calls Jupiter Swap API V2 `GET /swap/v2/build` with `platformFeeBps=50` and the BAGZ fee token account (wSOL for SOL pairs, USDC for USDC pairs; for exact-in swaps Jupiter accepts either mint). It refuses to build if the fee account is missing, not on-chain, the wrong mint or owner, or not wired into Jupiter's swap instruction. It loads lookup tables from the chain, compiles a v0 transaction, simulates it, sets the compute limit to 1.2× use, caps the priority fee, stores the message hash and returns the unsigned transaction. The wallet signs; `/v1/swap/submit` accepts it only if the bytes are unchanged and the signature verifies, sends it once, and `/v1/swap/status` reports confirmed/failed/expired from the chain, including the fee the fee account actually received.
+- **BOOST:** `/v1/boost/preview` checks the mint on-chain and finds real token data (Jupiter, then DexScreener). An order gets a unique Solana Pay reference. The payment is a USDC `transferChecked` to the BOOST account carrying that reference plus a memo; it can be paid in-app or with the Solana Pay link. Verification checks success, USDC mint, recipient, amount, reference and that it was made after the order; a signature can pay for one order only. Paid orders wait for an admin, who signs in by signing a one-time message with an allow-listed wallet. Approved listings run from their start for their package length and drop off automatically. Impressions count when a card is half on screen for 1 s; impressions and clicks are de-duplicated per viewer every 30 minutes.
+- **Sponsored placements** sit in their own row labelled “Paid placement” and “Ad”, separate from every organic list, and never touch Gem Score or risk checks.
 
-Do not set the flag until each of these has been verified independently (none has yet):
-1. Wallet connectivity with each supported wallet on desktop and phone.
-2. Transaction construction: decode Jupiter's returned transaction and confirm taker, mints, amounts and fee accounts match the quote.
-3. Security checks: deployed Worker probe passes, CORS refuses other origins, no key in the page, quote expiry and slippage limits enforced.
-4. Execution: tiny swaps from a throw-away wallet on mainnet, confirmed on-chain, including failure cases (expired quote, rejected signature, slippage exceeded).
+### Switches (all must be on before real money moves)
+| Where | Name | Default |
+|---|---|---|
+| Worker var | `ENABLE_LIVE_SWAPS` | `"false"`: quotes only, no transaction is built or sent |
+| Worker var | `ENABLE_LIVE_BOOST_PAYMENTS` | `"false"`: no orders or payments |
+| Worker var | `BAGZ_PLATFORM_FEE_BPS` | `"50"` (0.50%). `0` or invalid makes swaps refuse, never run fee-free |
+| Site build | `BAGZ_LIVE_TRADING=1 node build.mjs` | not set: the swap button stays off |
+
+### Worker configuration
+Vars (`worker/wrangler.toml`, public keys only): `FEE_WALLET`, `FEE_ACCOUNT_WSOL`, `FEE_ACCOUNT_USDC`, `BOOST_WALLET`, `BOOST_USDC_ACCOUNT` (the USDC associated token account of `BOOST_WALLET`, so Solana Pay payments land there), `ADMIN_WALLETS`, `MAX_CU_PRICE_MICROLAMPORTS`.
+Secrets (`npx wrangler secret put …`): `JUPITER_API_KEY`, `HELIUS_API_KEY` (or `SOLANA_RPC_URL`), `ADMIN_SESSION_SECRET` (32+ random characters), `ANALYTICS_SALT`, plus the existing `COINGECKO_API_KEY`, `PROBE_TOKEN`.
+D1: binding `Db` (as shown in the dashboard). Fill `database_name` / `database_id` in `wrangler.toml`, then:
+```bash
+cd worker
+npx wrangler d1 migrations apply <database_name> --remote
+npx wrangler deploy
+npx tsx ../scripts/probe-worker.ts https://bagz-api.<you>.workers.dev --token <PROBE_TOKEN>
+```
+The fee token accounts must exist before swaps are enabled (create the wSOL and USDC associated token accounts for `FEE_WALLET` in any wallet or with `spl-token create-account`).
+
+### Before switching anything on
+1. Security review of `worker/api.js` and `worker/solana.js`, and a compliance/legal review of charging swap fees and selling ad placements where you operate.
+2. Probe passes against the deployed Worker; `/v1/config` shows the fee accounts, BOOST account and D1 connected.
+3. With a throw-away wallet and tiny amounts on mainnet, with `ENABLE_LIVE_SWAPS="true"` and a `BAGZ_LIVE_TRADING=1` build served from a test URL: a buy and a sell on a SOL pair, a rejected signature, an expired quote, slippage exceeded. Check each fee transfer on Solscan.
+4. A $10 Starter BOOST paid in-app and one paid via the Solana Pay link; approve, watch it go live and expire.
+5. Decide and publish a refund policy for rejected listings (refunds are manual).
 
 ## Paper trading
 

@@ -45,7 +45,6 @@ const ENDPOINTS: Ep[] = [
   { name: 'jup search', path: `/p/jup/tokens/v2/search?query=${TOKEN}`, upstream: `https://api.jup.ag/tokens/v2/search?query=${TOKEN}`, key: 'x-api-key' },
   { name: 'jup price', path: `/p/jup/price/v3?ids=${MINT}`, upstream: `https://api.jup.ag/price/v3?ids=${MINT}`, key: 'x-api-key' },
   { name: 'jup order (frontend orderPath)', path: '/p/jup' + orderPath({ inMint: MINT, outMint: TOKEN, amountRaw: '100000000', slippageBps: 300, taker: POOL }), upstream: '', key: 'x-api-key' },
-  { name: 'jup execute', path: '/p/jup/swap/v2/execute', method: 'POST', body: { signedTransaction: TX, requestId: 'req-abcd1234' }, upstream: 'https://api.jup.ag/swap/v2/execute', key: 'x-api-key' },
   { name: 'gt new pools', path: '/p/gt/networks/solana/new_pools?include=base_token', upstream: 'https://api.coingecko.com/api/v3/onchain/networks/solana/new_pools?include=base_token', key: 'x-cg-demo-api-key' },
   { name: 'gt trending pools', path: '/p/gt/networks/solana/trending_pools?include=base_token', upstream: 'https://api.coingecko.com/api/v3/onchain/networks/solana/trending_pools?include=base_token', key: 'x-cg-demo-api-key' },
   { name: 'gt token pools', path: `/p/gt/networks/solana/tokens/${TOKEN}/pools?page=1`, upstream: `https://api.coingecko.com/api/v3/onchain/networks/solana/tokens/${TOKEN}/pools?page=1`, key: 'x-cg-demo-api-key' },
@@ -165,14 +164,12 @@ test('query order does not matter: same request, one upstream call', async () =>
   assert.equal(s.seen.length, 1);
 });
 
-test('POST bodies: swap execute and RPC are strictly validated', async () => {
+test('POST bodies: the fee-less Jupiter execute relay is gone; RPC is strictly validated', async () => {
   const s = stub();
   const post = (path: string, body: unknown) => run(mk(path, { method: 'POST', body }), env(), s.f);
-  for (const b of [
-    {}, { signedTransaction: TX }, { signedTransaction: TX, requestId: 'req-1234', extra: 1 }, { signedTransaction: 'short', requestId: 'req-1234' },
-    { signedTransaction: TX + '!!!', requestId: 'req-1234' }, { signedTransaction: TX, requestId: 'a b' }, { signedTransaction: 'A'.repeat(5000), requestId: 'req-1234' }, '[]', 'not json',
-  ]) assert.equal((await post('/p/jup/swap/v2/execute', b)).status, 400, JSON.stringify(b).slice(0, 60));
-  assert.equal((await post('/p/jup/swap/v2/execute', 'x'.repeat(9000))).status, 413);
+  // swaps go through /v1/swap (with the BAGZ fee); the proxy no longer relays /order → /execute transactions
+  assert.equal((await post('/p/jup/swap/v2/execute', { signedTransaction: TX, requestId: 'req-abcd1234' })).status, 403);
+  assert.equal((await post('/p/rpc', 'x'.repeat(9000))).status, 413);
   for (const method of ['sendTransaction', 'simulateTransaction', 'requestAirdrop', 'getAccountInfo', 'getProgramAccounts', 'getBalance']) {
     assert.equal((await post('/p/rpc', { jsonrpc: '2.0', id: 1, method, params: [] })).status, 403, method);
   }

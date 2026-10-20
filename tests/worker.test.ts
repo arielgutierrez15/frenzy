@@ -94,13 +94,15 @@ test('RPC: POST only, read-only method allowlist, uses your RPC URL', async () =
   assert.equal((await handle(req('/p/rpc'), e, undefined, { fetch: f, cache: null })).status, 405);
 });
 
-test('Jupiter execute is POST-only and never cached', async () => {
+test('Jupiter execute is no longer relayed by the proxy (swaps carry the BAGZ fee via /v1/swap)', async () => {
   const cache = mem();
-  const f = async () => new Response('{"status":"Success"}');
-  const g = await handle(req('/p/jup/swap/v2/execute'), env, undefined, { fetch: f, cache });
-  assert.equal(g.status, 405);
-  const p = await handle(req('/p/jup/swap/v2/execute', { method: 'POST', body: JSON.stringify({ signedTransaction: 'A'.repeat(200), requestId: 'req-1234' }) }), env, undefined, { fetch: f, cache });
-  assert.equal(p.status, 200);
+  let called = 0;
+  const f = async () => { called++; return new Response('{"status":"Success"}'); };
+  for (const method of ['GET', 'POST']) {
+    const r = await handle(req('/p/jup/swap/v2/execute', { method, body: method === 'POST' ? JSON.stringify({ signedTransaction: 'A'.repeat(200), requestId: 'req-1234' }) : undefined }), env, undefined, { fetch: f, cache });
+    assert.equal(r.status, 403);
+  }
+  assert.equal(called, 0);
   assert.equal(cache.size(), 0);
 });
 

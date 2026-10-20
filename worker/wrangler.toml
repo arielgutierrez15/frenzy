@@ -1,26 +1,60 @@
-name = "bagz-proxy"
+# The BAGZ Worker: market-data proxy (/p/…) + swaps, BOOST and admin API (/v1/…).
+# The brief says the deployed Worker is "bagz-api" with a D1 binding shown as "Db". Before deploying, check in the
+# Cloudflare dashboard (Workers & Pages → bagz-api → Settings → Bindings) that the names match. `wrangler deploy`
+# replaces the code of the Worker named here.
+name = "bagz-api"
 main = "index.js"
 compatibility_date = "2026-01-01"
 
 [vars]
-# comma-separated list of sites allowed to call the proxy from a browser
+# comma-separated list of sites allowed to call the API from a browser
 ALLOWED_ORIGINS = "https://arielgutierrez15.github.io"
 # set to "1" only while developing locally
 ALLOW_LOCALHOST = "0"
 # per-IP requests per minute per Worker instance (best effort; also add a Cloudflare rate-limiting rule)
 RATE_PER_MIN = "240"
-# POST requests (swap execute, RPC) per IP per minute
+# POST requests per IP per minute
 RATE_POST_PER_MIN = "20"
 # per-provider upstream calls per minute (cache misses), e.g. UPSTREAM_PER_MIN_JUP = "50"
 # "demo" (default, 100 calls/min) or "pro" when COINGECKO_API_KEY is a paid key
 COINGECKO_PLAN = "demo"
 
-# Secrets are NOT stored here. Add them with:
-#   npx wrangler secret put JUPITER_API_KEY      (free key from developers.jup.ag/portal)
-#   npx wrangler secret put COINGECKO_API_KEY    (optional; raises GeckoTerminal limits)
-#   npx wrangler secret put SOLANA_RPC_URL       (optional; your Helius/QuickNode/etc. endpoint)
-#   npx wrangler secret put PROBE_TOKEN          (random string; lets scripts/probe-worker.ts test the deployed Worker)
+# ---- money switches: OFF until security and compliance reviews are complete -----------------------------------------
+ENABLE_LIVE_SWAPS = "false"
+ENABLE_LIVE_BOOST_PAYMENTS = "false"
+# BAGZ platform fee in basis points (50 = 0.50%). 0 or an invalid value makes swaps refuse to run, never run fee-free.
+BAGZ_PLATFORM_FEE_BPS = "50"
+# cap on the priority fee BAGZ will put in a swap (micro-lamports per compute unit)
+MAX_CU_PRICE_MICROLAMPORTS = "1000000"
+
+# ---- addresses (public keys, not secrets). PLACEHOLDERS: fill in before turning anything on ---------------------------
+# Wallet that owns the fee accounts, and its token accounts that receive the 0.50% fee (must already exist on-chain).
+FEE_WALLET = ""
+FEE_ACCOUNT_WSOL = ""     # wrapped-SOL token account owned by FEE_WALLET (fees on SOL pairs)
+FEE_ACCOUNT_USDC = ""     # USDC token account owned by FEE_WALLET (fees on USDC pairs)
+# Wallet that receives BOOST payments, and its USDC associated token account.
+BOOST_WALLET = ""
+BOOST_USDC_ACCOUNT = ""
+# Admin wallets allowed to approve or reject BOOST listings (comma-separated public keys).
+ADMIN_WALLETS = ""
+
+# Secrets are NOT stored here. Add them with `npx wrangler secret put <NAME>`:
+#   JUPITER_API_KEY        Jupiter API key (developers.jup.ag/portal) — required for swaps
+#   HELIUS_API_KEY         Helius key (used as the RPC when SOLANA_RPC_URL is not set)
+#   SOLANA_RPC_URL         optional full RPC URL; takes priority over HELIUS_API_KEY
+#   COINGECKO_API_KEY      optional; raises GeckoTerminal limits
+#   ADMIN_SESSION_SECRET   random string, 32+ characters; signs admin sessions
+#   ANALYTICS_SALT         random string; salts the viewer hash used to de-duplicate impressions/clicks
+#   PROBE_TOKEN            random string; lets scripts/probe-worker.ts test the deployed Worker
 # For `wrangler dev`, put them in worker/.dev.vars (git-ignored).
+
+# D1 database. binding must match what the code reads (env.Db). Put your database's real name and id here:
+#   npx wrangler d1 list
+[[d1_databases]]
+binding = "Db"
+database_name = "REPLACE_WITH_D1_DATABASE_NAME"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
 
 # Hard per-IP rate limit (recommended). Uncomment after checking Cloudflare's current Workers rate-limiting syntax.
 # [[unsafe.bindings]]

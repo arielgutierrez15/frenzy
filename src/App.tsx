@@ -8,6 +8,8 @@ import { toastQueue, userStats, scoreCoin, topWallets, short } from './engine';
 import { ago, compact, pct, usd, signedUsd } from './format';
 import type { Notif } from './types';
 import { Wordmark, BRAND_TAGLINE } from './brand';
+import { PromoteView } from './boost/PromoteView';
+import { AdminView } from './boost/AdminView';
 
 const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -19,7 +21,8 @@ const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
 
 function readHash(): Route {
   const h = (typeof location !== 'undefined' ? location.hash.slice(1) : '') as Tab;
-  return { tab: TABS.some((t) => t.id === h) ? h : 'home' };
+  // promote and admin are pages without a tab-bar button
+  return { tab: TABS.some((t) => t.id === h) || h === 'promote' || h === 'admin' ? h : 'home' };
 }
 
 interface Toast { id: string; tone: Notif['tone']; title: string; body?: string; coinId?: string }
@@ -35,6 +38,12 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => { start(); }, []);
+  // typing a page address (#promote, #admin, #wallet…) into an open tab navigates there
+  useEffect(() => {
+    const on = () => { const r = readHash(); setStack((s) => (s.length === 1 && s[0].tab === r.tab ? s : [r])); window.scrollTo(0, 0); };
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
 
   const pushToast = useCallback((t: Omit<Toast, 'id'>) => {
     const id = Math.random().toString(36).slice(2);
@@ -67,7 +76,8 @@ export default function App() {
   const s = userStats(st);
   const unread = st.notifs.filter((n) => !n.read).length;
   const view = route.coin ? <CoinView key={route.coin} id={route.coin} /> : route.trader ? <TraderView key={route.trader} id={route.trader} /> :
-    route.tab === 'home' ? <HomeView /> : route.tab === 'feed' ? <FeedView /> : route.tab === 'radar' ? <RadarView /> : route.tab === 'wallet' ? <WalletView /> : <LeadersView />;
+    route.tab === 'home' ? <HomeView /> : route.tab === 'feed' ? <FeedView /> : route.tab === 'radar' ? <RadarView /> : route.tab === 'wallet' ? <WalletView /> :
+    route.tab === 'promote' ? <PromoteView /> : route.tab === 'admin' ? <AdminView /> : <LeadersView />;
   const showAside = !route.coin && !route.trader && (route.tab === 'feed' || route.tab === 'leaders');
 
   return (

@@ -1,11 +1,12 @@
 /**
- * Real (on-chain) trading is OFF. It stays off until the whole flow — quote, wallet signature, Jupiter execute and
- * on-chain confirmation — has been exercised against mainnet with a throw-away wallet and tiny amounts.
+ * Real (on-chain) trading is OFF. It stays off until the whole flow — server-built quote with the BAGZ fee, wallet
+ * signature, send and on-chain confirmation — has been exercised against mainnet with a throw-away wallet and tiny amounts.
  *
- * There are two independent locks:
- *  1. build flag   BAGZ_LIVE_TRADING=1 node build.mjs   (default: not set)
- *  2. in code      executeSwap() refuses unless liveTradingEnabled() is true
- * Quotes and wallet connection work either way; nothing in the app can send a transaction while this is false.
+ * There are independent locks, all of which must be open:
+ *  1. server       ENABLE_LIVE_SWAPS="true" on the Worker (default "false"); without it the server builds no transaction
+ *  2. build flag   BAGZ_LIVE_TRADING=1 node build.mjs   (default: not set)
+ *  3. in code      runSwap() refuses unless liveTradingEnabled() is true
+ * Quotes and wallet connection work either way; nothing in the app can send a transaction while these are closed.
  */
 declare const __BAGZ_LIVE_TRADING__: string | undefined;
 
