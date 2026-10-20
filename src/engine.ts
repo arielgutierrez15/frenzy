@@ -19,6 +19,24 @@ export const DISCOVERY_REFRESH_MS = 60_000;
 export const TAPE_REFRESH_MS = 45_000;
 const STALE_MS = 60_000; // paper trades only fill on a price fetched in the last minute
 const STORAGE_KEY = 'frenzy.live.v1'; // key kept from the Frenzy era so existing paper wallets survive the BAGZ rename
+const CLAIM_KEY = 'bagz.wallet.claimedBy';
+/** each BAGZ account has its own paper wallet on a device; without an account the device wallet is used */
+let walletKey = STORAGE_KEY;
+/**
+ * Point saving/loading at an account's paper wallet (or the device wallet with null). The first account that signs in on
+ * a device takes over the wallet that was already there; any other account starts with a fresh one.
+ */
+export function setWalletOwner(userId: string | null) {
+  walletKey = userId ? `${STORAGE_KEY}:${userId}` : STORAGE_KEY;
+  if (!userId) return;
+  try {
+    if (localStorage.getItem(walletKey) !== null) return;
+    const claimed = localStorage.getItem(CLAIM_KEY);
+    const device = localStorage.getItem(STORAGE_KEY);
+    if (!claimed && device) localStorage.setItem(walletKey, device);
+    if (!claimed) localStorage.setItem(CLAIM_KEY, userId);
+  } catch { /* storage blocked */ }
+}
 const STATE_VERSION = 10;
 
 let idSeq = 0;
@@ -841,7 +859,7 @@ export function importWallet(st: State, text: string): { ok: boolean; message: s
 export function load(): State {
   const st = freshState();
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(walletKey);
     if (raw) {
       const saved = JSON.parse(raw);
       if (saved && saved.v === STATE_VERSION && saved.user) {
@@ -859,10 +877,10 @@ export function save(st: State) {
     const keep = new Set<string>([...Object.keys(st.user.positions), ...st.user.orders.map((o) => o.coinId), ...st.user.trades.map((t) => t.coinId), ...st.user.theses.map((t) => t.coinId)]);
     const coins: Record<string, Coin> = {};
     keep.forEach((id) => { const c = st.coins[id]; if (c) coins[id] = { ...c, spark: c.spark.slice(-60) }; });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: STATE_VERSION, user: st.user, settings: st.settings, coins }));
+    localStorage.setItem(walletKey, JSON.stringify({ v: STATE_VERSION, user: st.user, settings: st.settings, coins }));
   } catch { /* ignore */ }
 }
 
 export function clearSave() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(walletKey); } catch { /* ignore */ }
 }

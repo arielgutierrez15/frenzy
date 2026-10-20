@@ -665,3 +665,5 @@ img.avatar-you { border-radius: 50%; object-fit: cover; padding: 0; }
   .tabbar button { font-size: 0.64rem; }
   .profile-head { gap: 12px; }
 }
+
+.test-copy-note { border: 1px dashed var(--warn); color: var(--fg); background: var(--warn-soft); border-radius: 12px; padding: 10px 12px; line-height: 1.45; }

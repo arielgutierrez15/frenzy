@@ -141,6 +141,10 @@ The fee token accounts must exist before swaps are enabled (create the wSOL and 
 4. A $10 Starter BOOST paid in-app and one paid via the Solana Pay link; approve, watch it go live and expire.
 5. Decide and publish a refund policy for rejected listings (refunds are manual).
 
+## Test copy (no server needed)
+
+`https://arielgutierrez15.github.io/frenzy/demo/` — the full app with accounts, leaderboard, friends and chats working before the Worker is deployed. The real Worker code runs inside the page on SQLite compiled to WebAssembly ([sql.js](https://github.com/sql-js/sql.js), MIT, `src/demo/vendor/`), saved in that browser only. Build with `npm run build:copy`, test with `npm run test:copy`. Each BAGZ account has its own paper wallet on a device.
+
 ## Accounts, leaderboard, friends and chats
 
 Needs the Worker with D1 (`0002_social.sql`). Until then the app runs without accounts and these screens say they're offline.

@@ -12,10 +12,10 @@
  * Mini App's localStorage). The password is never stored.
  */
 import { useSyncExternalStore } from 'react';
-import { proxyBase } from '../providers/config';
+import { apiBase } from '../trading/api';
 import { getServerConfig, ApiErr } from '../trading/api';
 import { tgCloud } from '../telegram';
-import { getState } from '../store';
+import { getState, switchWallet } from '../store';
 import { userStats } from '../engine';
 import * as api from './api';
 import type { Me } from './api';
@@ -38,7 +38,7 @@ let started = false;
 export async function initSession() {
   if (started) return;
   started = true;
-  if (!proxyBase()) { set({ status: 'unavailable', note: 'no-server' }); return; }
+  if (!apiBase()) { set({ status: 'unavailable', note: 'no-server' }); return; }
   try {
     const cfg = await getServerConfig();
     if (!(cfg as any).accounts) { set({ status: 'unavailable', note: 'no-database' }); return; }
@@ -55,6 +55,7 @@ export async function initSession() {
   }
 }
 export function signedIn(token: string, user: Me) {
+  switchWallet(user.id);
   writeLocal(token);
   tgCloud.set(KEY, token);
   set({ token, user, status: user.complete ? 'ready' : 'incomplete' });
@@ -64,10 +65,10 @@ export function updateMe(user: Me) { set({ user, status: user.complete ? 'ready'
 function forget() { writeLocal(null); tgCloud.remove(KEY); }
 export async function logout() {
   try { await api.logoutApi(); } catch { /* already gone */ }
-  forget(); stopSync();
+  forget(); stopSync(); switchWallet(null);
   set({ status: 'signed-out', token: null, user: null });
 }
-export function accountDeleted() { forget(); stopSync(); set({ status: 'signed-out', token: null, user: null }); }
+export function accountDeleted() { forget(); stopSync(); switchWallet(null); set({ status: 'signed-out', token: null, user: null }); }
 
 // ---- keeping the public profile in sync with the paper wallet ---------------------------------------------------------
 let timer: ReturnType<typeof setInterval> | null = null;

@@ -11,7 +11,7 @@ import type { Notif } from './types';
 import { Wordmark, Badge, BRAND_TAGLINE } from './brand';
 import { PromoteView } from './boost/PromoteView';
 import { useSession, initSession, syncNow } from './social/session';
-import { Onboarding, ProfileView, RanksView, ChatsView, ChatRoom, UserAvatar, useSocialCounts, refreshCounts } from './social/ui';
+import { Onboarding, ProfileView, RanksView, ChatsView, ChatRoom, UserAvatar, useSocialCounts, refreshCounts, TestCopyNote } from './social/ui';
 import { AdminView } from './boost/AdminView';
 import { inTelegram, syncBackButton, startMint, haptic } from './telegram';
 
@@ -162,6 +162,7 @@ export default function App() {
               <Icon.bell size={20} />{unread > 0 && <span className="dot-count num">{unread > 9 ? '9+' : unread}</span>}
             </button>
           </div>
+          {route.tab === 'me' && !sub && <TestCopyNote />}
           {view}
         </main>
 

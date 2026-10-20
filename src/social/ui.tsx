@@ -7,6 +7,7 @@ import { ago, compact, pct, signedUsd, usd, price as fmtPrice } from '../format'
 import { haptic } from '../telegram';
 import { useSession, signedIn, updateMe, logout, accountDeleted, getSession, syncNow } from './session';
 import * as api from './api';
+import { demo } from '../demo/hook';
 import type { UserSummary, Activity, Profile, ChatSummary, Message, Relation } from './api';
 
 const errMsg = (e: any) => (e && e.message) || 'Something went wrong';
@@ -14,7 +15,11 @@ const errMsg = (e: any) => (e && e.message) || 'Something went wrong';
 // ======================================================================
 // avatar
 // ======================================================================
+const noSub = () => () => {};
+const zero = () => 0;
 export function UserAvatar({ u, size = 36 }: { u: UserSummary | null | undefined; size?: number }) {
+  const d = demo();
+  useSyncExternalStore(d ? d.subscribe : noSub, d ? d.version : zero, d ? d.version : zero);
   const [broken, setBroken] = useState(false);
   const src = broken ? null : api.avatarUrl(u);
   if (src) return <img className="uavatar" src={src} width={size} height={size} style={{ width: size, height: size }} alt="" loading="lazy" onError={() => setBroken(true)} />;
@@ -54,6 +59,7 @@ export function Onboarding() {
     <div className="onboard">
       <div className="onboard-card">
         <div className="onboard-brand"><Badge className="brand-badge onboard-badge" /><Wordmark /></div>
+        {demo() && <TestCopyNote />}
         <ol className="onboard-steps" aria-label="Steps">
           <li className={step === 'account' ? 'on' : 'done'}>1 · Account</li>
           <li className={step === 'picture' ? 'on' : ''}>2 · Picture</li>
@@ -621,6 +627,19 @@ function FriendsPanel() {
         ) : <p className="muted small">No friends yet. Search for a username above.</p>}
         {f && f.outgoing.length > 0 && <p className="muted small">Waiting on: {f.outgoing.map((u) => '@' + u.username).join(', ')}</p>}
       </div>
+    </div>
+  );
+}
+
+/** shown only in the test copy */
+export function TestCopyNote() {
+  const [sure, setSure] = useState(false);
+  const d = demo();
+  if (!d) return null;
+  return (
+    <div className="test-copy-note small">
+      <b>Test copy.</b> Accounts, chats and the leaderboard are saved only in this browser. To test friends and chats, make a second account: log out, sign up again, then switch back.
+      {' '}{sure ? <><button className="link small" onClick={async () => { await d.reset(); location.reload(); }}>Yes, erase test data</button> · <button className="link small" onClick={() => setSure(false)}>Cancel</button></> : <button className="link small" onClick={() => setSure(true)}>Erase test data</button>}
     </div>
   );
 }

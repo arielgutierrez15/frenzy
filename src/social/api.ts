@@ -1,6 +1,7 @@
 /** Client for the BAGZ social API. Every call that needs an account sends the session token. */
 import { apiCall } from '../trading/api';
 import { proxyBase } from '../providers/config';
+import { demo } from '../demo/hook';
 import { getSession } from './session';
 
 export interface UserSummary { id: string; username: string; avatarVer: number }
@@ -19,6 +20,9 @@ const get = <T,>(path: string) => apiCall<T>(path, { token: tok() });
 const post = <T,>(path: string, body: unknown, timeoutMs?: number) => apiCall<T>(path, { body, token: tok(), timeoutMs });
 
 export const avatarUrl = (u: { id: string; avatarVer: number } | null | undefined) => {
+  if (!u || !(u.avatarVer > 0)) return null;
+  const d = demo();
+  if (d) return d.avatar(u.id, u.avatarVer);
   const base = proxyBase();
   return u && u.avatarVer > 0 && base ? `${base}/v1/avatars/${u.id}?v=${u.avatarVer}` : null;
 };

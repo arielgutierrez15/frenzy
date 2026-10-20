@@ -3,20 +3,24 @@
  * Without a configured Worker (see providers/config.ts) these features say so instead of failing silently.
  */
 import { proxyBase } from '../providers/config';
+import { demo } from '../demo/hook';
+
+/** where the BAGZ API lives: the configured Worker, or the in-page server in the test copy */
+export const apiBase = (): string | null => demo()?.base || proxyBase();
 
 export class ApiErr extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); this.name = 'ApiErr'; }
 }
 
 type FetchFn = (url: string, init: RequestInit) => Promise<Response>;
-let fetchImpl: FetchFn = (u, i) => fetch(u, i);
+let fetchImpl: FetchFn = (u, i) => { const d = demo(); return d ? d.fetch(u, i) : fetch(u, i); };
 /** tests only */
 export const __setApiFetch = (f: FetchFn) => { fetchImpl = f; cfgCache = null; };
 
 export const NO_SERVER = 'The BAGZ server isn’t connected to this page, so live swaps and Boost aren’t available here.';
 
 export async function apiCall<T>(path: string, o: { method?: 'GET' | 'POST'; body?: unknown; token?: string; timeoutMs?: number } = {}): Promise<T> {
-  const base = proxyBase();
+  const base = apiBase();
   if (!base) throw new ApiErr(0, NO_SERVER);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), o.timeoutMs ?? 20_000);
