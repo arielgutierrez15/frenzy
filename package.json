@@ -17,6 +17,7 @@
     "test:app": "node --import tsx tests/app-e2e.ts",
     "test:telegram": "node tests/telegram-e2e.mjs",
     "test:cards": "node tests/cards-e2e.mjs",
+    "test:social": "node --import tsx tests/social-e2e.ts",
     "probe": "tsx scripts/probe-worker.ts"
   },
   "dependencies": {

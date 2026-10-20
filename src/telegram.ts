@@ -22,6 +22,7 @@ export interface TgWebApp {
   openLink: (url: string, o?: { try_instant_view?: boolean }) => void;
   openTelegramLink: (url: string) => void;
   BackButton: { show: () => void; hide: () => void; onClick: (f: () => void) => void; offClick: (f: () => void) => void };
+  CloudStorage?: { setItem: (k: string, v: string, cb?: (e: unknown, ok?: boolean) => void) => void; getItem: (k: string, cb: (e: unknown, v?: string) => void) => void; removeItem: (k: string, cb?: (e: unknown, ok?: boolean) => void) => void };
   HapticFeedback?: { selectionChanged: () => void; impactOccurred: (s: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void; notificationOccurred: (t: 'error' | 'success' | 'warning') => void };
 }
 
@@ -111,3 +112,17 @@ export function syncBackButton(visible: boolean, onBack: () => void): () => void
   else t.BackButton.hide();
   return () => { try { t.BackButton.offClick(onBack); } catch { /* ignore */ } };
 }
+
+/**
+ * Telegram Cloud Storage (Bot API 6.9+): survives Telegram clearing the webview's localStorage, and follows the user
+ * to their other Telegram devices. Used only for the BAGZ session token.
+ */
+export const tgCloud = {
+  get(key: string): Promise<string | null> {
+    const t = tg();
+    if (!t?.CloudStorage || !atLeast(t, '6.9')) return Promise.resolve(null);
+    return new Promise((res) => { const timer = setTimeout(() => res(null), 2500); try { t.CloudStorage!.getItem(key, (e, v) => { clearTimeout(timer); res(e || !v ? null : v); }); } catch { clearTimeout(timer); res(null); } });
+  },
+  set(key: string, value: string) { const t = tg(); if (t?.CloudStorage && atLeast(t, '6.9')) { try { t.CloudStorage.setItem(key, value); } catch { /* ignore */ } } },
+  remove(key: string) { const t = tg(); if (t?.CloudStorage && atLeast(t, '6.9')) { try { t.CloudStorage.removeItem(key); } catch { /* ignore */ } } },
+};

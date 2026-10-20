@@ -8,8 +8,10 @@ import { Avatar, CoinBadge, Icon, ScoreRing } from './ui';
 import { toastQueue, userStats, scoreCoin, topWallets, short } from './engine';
 import { ago, compact, pct, usd, signedUsd } from './format';
 import type { Notif } from './types';
-import { Wordmark, BRAND_TAGLINE } from './brand';
+import { Wordmark, Badge, BRAND_TAGLINE } from './brand';
 import { PromoteView } from './boost/PromoteView';
+import { useSession, initSession, syncNow } from './social/session';
+import { Onboarding, ProfileView, RanksView, ChatsView, ChatRoom, UserAvatar, useSocialCounts, refreshCounts } from './social/ui';
 import { AdminView } from './boost/AdminView';
 import { inTelegram, syncBackButton, startMint, haptic } from './telegram';
 
@@ -17,14 +19,15 @@ const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'feed', label: 'Live', icon: 'feed' },
   { id: 'radar', label: 'Gem Radar', icon: 'radar' },
+  { id: 'ranks', label: 'Ranks', icon: 'trophy' },
+  { id: 'chats', label: 'Chats', icon: 'chat' },
   { id: 'wallet', label: 'Wallet', icon: 'wallet' },
-  { id: 'leaders', label: 'Wallets', icon: 'users' },
 ];
 
 function readHash(): Route {
   const h = (typeof location !== 'undefined' ? location.hash.slice(1) : '') as Tab;
   // promote and admin are pages without a tab-bar button
-  return { tab: TABS.some((t) => t.id === h) || h === 'promote' || h === 'admin' ? h : 'home' };
+  return { tab: TABS.some((t) => t.id === h) || ['promote', 'admin', 'me', 'leaders'].includes(h) ? h : 'home' };
 }
 
 interface Toast { id: string; tone: Notif['tone']; title: string; body?: string; coinId?: string }
@@ -39,7 +42,14 @@ export default function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const mainRef = useRef<HTMLElement>(null);
 
-  useEffect(() => { start(); }, []);
+  const ses = useSession();
+  const counts = useSocialCounts();
+  useEffect(() => { start(); initSession(); }, []);
+  // a new paper trade or thesis goes to the public profile right away
+  const activityCount = st.user.trades.length + st.user.theses.length;
+  useEffect(() => { if (ses.status === 'ready') { const t = setTimeout(() => syncNow(), 800); return () => clearTimeout(t); } }, [activityCount, ses.status]);
+  // unread chats and friend requests for the tab badges
+  useEffect(() => { if (ses.status !== 'ready') return; refreshCounts(); const t = setInterval(refreshCounts, 20_000); return () => clearInterval(t); }, [ses.status]);
   // typing a page address (#promote, #admin, #wallet…) into an open tab navigates there
   useEffect(() => {
     const on = () => { const r = readHash(); setStack((s) => (s.length === 1 && s[0].tab === r.tab ? s : [r])); window.scrollTo(0, 0); };
@@ -66,9 +76,11 @@ export default function App() {
 
   const nav: Nav = useMemo(() => ({
     route,
-    go: (tab) => { setStack([{ tab }]); try { history.replaceState(null, '', '#' + tab); } catch { /* sandboxed */ } mainRef.current?.scrollTo?.(0, 0); window.scrollTo(0, 0); },
+    go: (tab, opts) => { setStack([{ tab, section: opts?.section }]); try { history.replaceState(null, '', '#' + tab); } catch { /* sandboxed */ } mainRef.current?.scrollTo?.(0, 0); window.scrollTo(0, 0); },
     openCoin: (id) => { setStack((s) => [...s, { tab: s[s.length - 1].tab, coin: id }]); window.scrollTo(0, 0); },
     openTrader: (id) => { setStack((s) => [...s, { tab: s[s.length - 1].tab, trader: id }]); window.scrollTo(0, 0); },
+    openUser: (username) => { setStack((s) => [...s, { tab: s[s.length - 1].tab, user: username }]); window.scrollTo(0, 0); },
+    openChat: (id) => { setStack((s) => [...s, { tab: 'chats', chat: id }]); window.scrollTo(0, 0); },
     back: () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)),
     trade: (t) => setIntent(t),
     share: (card) => setSharing(card || { kind: 'wallet' }),
@@ -76,7 +88,8 @@ export default function App() {
   }), [route, pushToast]);
 
   // Telegram: its own back button mirrors BAGZ back navigation
-  const canBack = stack.length > 1 || route.tab === 'promote' || route.tab === 'admin';
+  const gated = ses.status === 'checking' || ses.status === 'signed-out' || ses.status === 'incomplete';
+  const canBack = !gated && (stack.length > 1 || ['promote', 'admin', 'me', 'leaders'].includes(route.tab));
   useEffect(() => syncBackButton(canBack, () => { haptic.tap(); if (stack.length > 1) nav.back(); else nav.go('home'); }), [canBack, stack.length, nav]);
   // Telegram: t.me/<bot>?startapp=<mint> opens that coin once it has loaded
   const startRef = useRef<{ mint: string | null; at: number; done: boolean }>({ mint: startMint(), at: Date.now(), done: false });
@@ -91,9 +104,16 @@ export default function App() {
   const s = userStats(st);
   const unread = st.notifs.filter((n) => !n.read).length;
   const view = route.coin ? <CoinView key={route.coin} id={route.coin} /> : route.trader ? <TraderView key={route.trader} id={route.trader} /> :
+    route.user ? <ProfileView key={route.user} username={route.user} /> : route.chat ? <ChatRoom key={route.chat} id={route.chat} /> :
     route.tab === 'home' ? <HomeView /> : route.tab === 'feed' ? <FeedView /> : route.tab === 'radar' ? <RadarView /> : route.tab === 'wallet' ? <WalletView /> :
+    route.tab === 'ranks' ? <RanksView onchain={<LeadersView embedded />} /> : route.tab === 'chats' ? <ChatsView section={route.section} /> : route.tab === 'me' ? <ProfileView /> :
     route.tab === 'promote' ? <PromoteView /> : route.tab === 'admin' ? <AdminView /> : <LeadersView />;
-  const showAside = !route.coin && !route.trader && (route.tab === 'feed' || route.tab === 'leaders');
+  const sub = !!(route.coin || route.trader || route.user || route.chat);
+  const showAside = !sub && (route.tab === 'feed' || route.tab === 'leaders');
+
+  // first visit: a public profile comes before the app
+  if (ses.status === 'checking') return <div className="boot-screen"><Badge className="brand-badge pulse-badge boot-badge" /></div>;
+  if (ses.status === 'signed-out' || ses.status === 'incomplete') return <Onboarding />;
 
   return (
     <NavCtx.Provider value={nav}>
@@ -107,12 +127,13 @@ export default function App() {
             {TABS.map((t) => {
               const Ico = Icon[t.icon];
               return (
-                <button key={t.id} className={route.tab === t.id && !route.coin && !route.trader ? 'on' : ''} onClick={() => nav.go(t.id)}>
-                  <Ico size={20} /><span>{t.label}</span>
+                <button key={t.id} className={route.tab === t.id && !sub ? 'on' : ''} onClick={() => nav.go(t.id)}>
+                  <Ico size={20} /><span>{t.label}</span>{t.id === 'chats' && counts.unread + counts.requests > 0 && <span className="dot-count num tab-dot">{counts.unread + counts.requests > 9 ? '9+' : counts.unread + counts.requests}</span>}
                 </button>
               );
             })}
           </nav>
+          {ses.user && <button className="rail-me" onClick={() => nav.go('me')}><UserAvatar u={ses.user} size={34} /><span className="stack"><b>@{ses.user.username}</b><span className="muted small">Your profile</span></span></button>}
           <button className="rail-wallet" onClick={() => nav.go('wallet')}>
             <span className="eyebrow">Paper wallet</span>
             <b className="num">{usd(s.equity)}</b>
@@ -131,6 +152,7 @@ export default function App() {
           <button className="icon-btn bell" aria-label={`Alerts, ${unread} unread`} onClick={() => setBellOpen((b) => !b)}>
             <Icon.bell size={20} />{unread > 0 && <span className="dot-count num">{unread > 9 ? '9+' : unread}</span>}
           </button>
+          {ses.user && <button className="bare topbar-me" onClick={() => nav.go('me')} aria-label="Your profile"><UserAvatar u={ses.user} size={34} /></button>}
         </header>
 
         <main className="main" ref={mainRef}>
@@ -149,8 +171,9 @@ export default function App() {
           {TABS.map((t) => {
             const Ico = Icon[t.icon];
             return (
-              <button key={t.id} className={route.tab === t.id ? 'on' : ''} onClick={() => { haptic.tap(); nav.go(t.id); }} aria-current={route.tab === t.id}>
-                <Ico size={22} /><span>{t.label === 'Gem Radar' ? 'Radar' : t.label}</span>
+              <button key={t.id} className={route.tab === t.id ? 'on' : ''} onClick={() => { haptic.tap(); nav.go(t.id); }} aria-current={route.tab === t.id} aria-label={t.id === 'chats' && counts.unread + counts.requests > 0 ? `Chats, ${counts.unread + counts.requests} new` : undefined}>
+                <span className="tab-ico"><Ico size={22} />{t.id === 'chats' && counts.unread + counts.requests > 0 && <span className="dot-count num tab-dot">{counts.unread + counts.requests > 9 ? '9+' : counts.unread + counts.requests}</span>}</span>
+                <span>{t.label === 'Gem Radar' ? 'Radar' : t.label}</span>
               </button>
             );
           })}
@@ -210,7 +233,7 @@ function Aside() {
         </ul>
       </div>
       <div className="panel">
-        <div className="row"><h2>Busiest wallets</h2><span className="grow" /><button className="link small" onClick={() => nav.go('leaders')}>All</button></div>
+        <div className="row"><h2>Busiest wallets</h2><span className="grow" /><button className="link small" onClick={() => nav.go('ranks')}>All</button></div>
         <ul className="mini-list">
           {wallets.map((w) => (
             <li key={w.address} className="row gap-s">
