@@ -1,3 +1,4 @@
+import { BADGE_SRC } from './brand';
 import React, { useEffect, useRef, useState } from 'react';
 import type { Candle, Coin } from './types';
 import { price as fmtPrice, compact, clock } from './format';
@@ -59,9 +60,9 @@ export function Avatar({ wallet, size = 36, you = false }: { wallet?: string; si
   const hue = you ? 0 : hueOf(wallet || '?');
   const initial = you ? 'Y' : (wallet || '?').slice(0, 2);
   return (
-    <span className={`avatar${you ? ' avatar-you' : ''}`} style={{ width: size, height: size, fontSize: size * (you ? 0.42 : 0.32), ['--h' as any]: hue }} aria-hidden="true">
-      {initial}
-    </span>
+    you
+      ? <img className="avatar avatar-you" src={BADGE_SRC} width={size} height={size} style={{ width: size, height: size }} alt="" aria-hidden="true" />
+      : <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.32, ['--h' as any]: hue }} aria-hidden="true">{initial}</span>
   );
 }
 

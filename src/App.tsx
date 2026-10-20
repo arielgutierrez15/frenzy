@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore, act, start } from './store';
 import { NavCtx, useNav, Nav, Route, Tab, TradeIntent } from './nav';
 import { HomeView, FeedView, RadarView, WalletView, LeadersView, CoinView, TraderView, FollowButton } from './views';
-import { TradeSheet, ShareCard } from './TradeSheet';
+import { TradeSheet } from './TradeSheet';
+import { CardSheet, type CardSpec } from './card/CardSheet';
 import { Avatar, CoinBadge, Icon, ScoreRing } from './ui';
 import { toastQueue, userStats, scoreCoin, topWallets, short } from './engine';
 import { ago, compact, pct, usd, signedUsd } from './format';
@@ -33,7 +34,7 @@ export default function App() {
   const [stack, setStack] = useState<Route[]>([readHash()]);
   const route = stack[stack.length - 1];
   const [intent, setIntent] = useState<TradeIntent | null>(null);
-  const [sharing, setSharing] = useState(false);
+  const [sharing, setSharing] = useState<CardSpec | null>(null);
   const [bellOpen, setBellOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const mainRef = useRef<HTMLElement>(null);
@@ -70,7 +71,7 @@ export default function App() {
     openTrader: (id) => { setStack((s) => [...s, { tab: s[s.length - 1].tab, trader: id }]); window.scrollTo(0, 0); },
     back: () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)),
     trade: (t) => setIntent(t),
-    share: () => setSharing(true),
+    share: (card) => setSharing(card || { kind: 'wallet' }),
     toast: (tone, title, body) => pushToast({ tone, title, body }),
   }), [route, pushToast]);
 
@@ -157,7 +158,7 @@ export default function App() {
 
         {bellOpen && <AlertsPanel onClose={() => setBellOpen(false)} />}
         {intent && <TradeSheet key={intent.coinId + intent.side} intent={intent} onClose={() => setIntent(null)} />}
-        {sharing && <ShareCard onClose={() => setSharing(false)} />}
+        {sharing && <CardSheet key={JSON.stringify(sharing)} spec={sharing} onClose={() => setSharing(null)} />}
 
         <div className="toasts" aria-live="polite">
           {toasts.map((t) => (

@@ -125,6 +125,15 @@ const LAUNCH = `#tgWebAppData=${INIT}&tgWebAppVersion=8.0&tgWebAppPlatform=ios`;
   check('phone layout: no horizontal scroll inside Telegram', await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   await p.screenshot({ path: `${SHOTS}/tg-radar.png` });
 
+  // trading card inside Telegram: send to a chat via Telegram's share link, no launch data in it
+  await p.locator('.tabbar button', { hasText: /^Wallet$/ }).click();
+  await p.locator('button', { hasText: 'Trading card' }).first().click();
+  await until(async () => p.evaluate(() => !!document.querySelector('.card-img')?.naturalWidth), 8000);
+  await p.locator('.sheet.share button', { hasText: 'Send in Telegram' }).click();
+  const share = (await calls(p)).filter((x) => x[0] === 'openTelegramLink').pop()?.[1] || '';
+  check('trading card: “Send in Telegram” opens Telegram’s share sheet with the clean app link', share.startsWith('https://t.me/share/url?url=' + encodeURIComponent(APP + '/')) && !/tgWebApp|query_id|deadbeef/.test(decodeURIComponent(share)), share.slice(0, 100));
+  await p.locator('.sheet.share button[aria-label=Close]').click();
+
   // reload: Telegram keeps launch data in sessionStorage (hash is gone after BAGZ navigates)
   await p.reload();
   check('after a reload inside Telegram the script still loads and ready() is called', await until(async () => has(p, 'ready'), 8000));
