@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { State } from './types';
-import { load, save, freshState, clearSave, discover, refreshPrices, refreshLiveTape, armAlerts, loadSnapshot, leaveSnapshot, PRICE_REFRESH_MS, DISCOVERY_REFRESH_MS, TAPE_REFRESH_MS } from './engine';
+import { load, save, freshState, clearSave, setWalletOwner, discover, refreshPrices, refreshLiveTape, armAlerts, loadSnapshot, leaveSnapshot, PRICE_REFRESH_MS, DISCOVERY_REFRESH_MS, TAPE_REFRESH_MS } from './engine';
 
 const anySourceOk = () => Object.values(state.sources).some((s) => s.ok);
 
@@ -34,6 +34,21 @@ export function useStore(): State {
 
 /** The coin page tells the store which coin is open so it gets refreshed first. */
 export function setFocus(id?: string) { focusCoin = id; }
+
+/** switch to an account's own paper wallet (null = the device wallet); live market data is kept */
+let owner: string | null = null;
+export function switchWallet(userId: string | null) {
+  if (userId === owner) return;
+  save(state);
+  owner = userId;
+  setWalletOwner(userId);
+  const next = load();
+  state.user = next.user;
+  state.settings = next.settings;
+  for (const [id, c] of Object.entries(next.coins)) if (!state.coins[id]) state.coins[id] = c;
+  state.notifs = [];
+  emit();
+}
 
 export function resetAll() {
   clearSave();

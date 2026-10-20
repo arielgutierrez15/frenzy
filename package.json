@@ -18,6 +18,8 @@
     "test:telegram": "node tests/telegram-e2e.mjs",
     "test:cards": "node tests/cards-e2e.mjs",
     "test:social": "node --import tsx tests/social-e2e.ts",
+    "test:copy": "node --import tsx tests/testcopy-e2e.ts",
+    "build:copy": "BAGZ_DEMO=1 BAGZ_PAGE_OUT=docs/demo/index.html node build.mjs",
     "probe": "tsx scripts/probe-worker.ts"
   },
   "dependencies": {
