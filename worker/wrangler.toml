@@ -55,8 +55,8 @@ ADMIN_WALLETS = ""
 #   npx wrangler d1 list
 [[d1_databases]]
 binding = "Db"
-database_name = "REPLACE_WITH_D1_DATABASE_NAME"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_name = "bagz-db"
+database_id = "57bff6ca-2987-4e3a-9b58-9defa51df197"
 migrations_dir = "migrations"
 
 # Hard per-IP rate limit (recommended). Uncomment after checking Cloudflare's current Workers rate-limiting syntax.
