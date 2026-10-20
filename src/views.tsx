@@ -20,6 +20,7 @@ import { HealthPanel } from './Health';
 import { LiveSwap } from './trading/LiveSwap';
 import { proxyBase } from './providers/config';
 import { SponsoredStrip } from './boost/Sponsored';
+import { Badge } from './brand';
 import { setPromoteMint } from './boost/PromoteView';
 import { ConnectedWalletPanel } from './trading/ConnectedWallet';
 
@@ -56,6 +57,7 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
 function Empty({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
   return (
     <div className="empty">
+      <Badge className="brand-badge empty-badge" />
       <b>{title}</b>
       <p>{body}</p>
       {action}
@@ -68,7 +70,7 @@ function DataGate({ children }: { children: React.ReactNode }) {
   const st = useStore();
   const src = Object.values(st.sources);
   const anyOk = src.some((s) => s.ok);
-  if (!st.loaded && !anyOk) return <div className="loading"><span className="spinner" />Loading live markets from DexScreener, Jupiter, GeckoTerminal and pump.fun…</div>;
+  if (!st.loaded && !anyOk) return <div className="loading loading-brand"><Badge className="brand-badge pulse-badge" />Loading live markets from DexScreener, Jupiter, GeckoTerminal and pump.fun…</div>;
   if (st.snapshotAt) return (
     <>
       <div className="banner banner-warn small" role="status">
@@ -622,6 +624,7 @@ function ActivityList({ limit = 80 }: { limit?: number }) {
           <span className="num muted hide-s">@ {fmtPrice(t.price)}</span>
           {t.pnl !== undefined && <span className={`num ${t.pnl >= 0 ? 'up' : 'down'}`}>{signedUsd(t.pnl)}</span>}
           <span className="muted small">{ago(t.t)}</span>
+          {t.side === 'SELL' && t.pnl !== undefined && <button className="icon-btn icon-btn-sm" aria-label={`Trading card for $${t.symbol} sell`} title="Trading card" onClick={(e) => { e.stopPropagation(); nav.share({ kind: 'trade', tradeId: t.id }); }}><Icon.share size={14} /></button>}
         </li>
       ))}
     </ul>
@@ -644,7 +647,7 @@ export function WalletView() {
           <h1>Wallet</h1>
           <p className="muted">Paper money on live prices. You started with {usd(START_CASH, 0)}{st.user.deposits > START_CASH ? ` and added ${usd(st.user.deposits - START_CASH, 0)}` : ''}. Every buy, sell and order saves automatically in this browser; back it up to move it to another device.</p>
         </div>
-        <button className="btn btn-soft" onClick={nav.share}><Icon.share size={16} /> Share PnL</button>
+        <button className="btn btn-soft" onClick={() => nav.share({ kind: 'wallet' })}><Icon.share size={16} /> Trading card</button>
       </header>
       <div className="panel wallet-hero">
         <div className="wallet-top">
@@ -727,6 +730,7 @@ export function WalletView() {
                     <b className="num">{usd(val)}</b>
                     <span className={`num small ${pnl >= 0 ? 'up' : 'down'}`}>{signedUsd(pnl)} · {pct((val / p.cost - 1) * 100)}</span>
                   </div>
+                  <button className="icon-btn" aria-label={`Trading card for $${c.symbol}`} title="Trading card" onClick={(e) => { e.stopPropagation(); nav.share({ kind: 'position', coinId: c.id }); }}><Icon.share size={16} /></button>
                   <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); nav.trade({ coinId: c.id, side: 'SELL' }); }}>Sell</button>
                 </article>
               );

@@ -51,6 +51,16 @@ Without `npm install`, `node build.mjs` still works: the page then loads Lightwe
 
 Settings → Pages → Deploy from a branch → `main` → `/docs`. The site is `https://<user>.github.io/frenzy/`.
 
+## Deploy the Worker from the Cloudflare dashboard (no terminal)
+
+1. **D1 tables (once):** Cloudflare → Storage & Databases → D1 → your database → Console. Paste the whole of `worker/migrations/0001_swap_boost.sql` and run it.
+2. **Config:** in `worker/wrangler.toml` set `name` to your Worker's exact name, and `database_name` / `database_id` to your D1 database (shown on its page). Commit.
+3. **Connect the repo:** Workers & Pages → your Worker → Settings → Build → connect `arielgutierrez15/frenzy`, branch `main`, root directory `worker`, deploy command `npx wrangler deploy`. Every push to `main` then redeploys the Worker.
+4. **Secrets:** Worker → Settings → Variables and Secrets → add `JUPITER_API_KEY`, `HELIUS_API_KEY`, `ADMIN_SESSION_SECRET` (32+ random characters), `ANALYTICS_SALT`, `PROBE_TOKEN` as **Secret** type.
+5. **Point the site at it:** rebuild with `BAGZ_PROXY_URL=https://<worker>.<you>.workers.dev node build.mjs` and commit `docs/` (or open the site once with `?proxy=https://<worker>.<you>.workers.dev`).
+
+The terminal route below does the same thing.
+
 ## Deploy the proxy (recommended; needed for pump.fun and reliable GeckoTerminal)
 
 The site keeps working without it (calls go direct from the browser, with the limits above). Deploy and test the Worker first, then connect the site.
@@ -85,6 +95,8 @@ The site keeps working without it (calls go direct from the browser, with the li
 ## Telegram Mini App
 
 BAGZ runs inside Telegram as a Mini App. Nothing extra is hosted: Telegram opens the GitHub Pages site.
+
+**Bot picture:** `public/telegram-bot-avatar.png` (send it to @BotFather with `/setuserpic`).
 
 **Set it up in @BotFather** (in Telegram):
 1. `/newbot` → pick a name and a username ending in `bot`. Keep the token BotFather gives you private (BAGZ doesn't need it).
@@ -128,6 +140,10 @@ The fee token accounts must exist before swaps are enabled (create the wSOL and 
 3. With a throw-away wallet and tiny amounts on mainnet, with `ENABLE_LIVE_SWAPS="true"` and a `BAGZ_LIVE_TRADING=1` build served from a test URL: a buy and a sell on a SOL pair, a rejected signature, an expired quote, slippage exceeded. Check each fee transfer on Solscan.
 4. A $10 Starter BOOST paid in-app and one paid via the Solana Pay link; approve, watch it go live and expire.
 5. Decide and publish a refund policy for rejected listings (refunds are manual).
+
+## Trading cards
+
+Shareable 1200×750 PNG cards drawn in the browser (`src/card/`): the paper wallet (Wallet → Trading card), any open position (share icon on the position), and every closed trade (opens by itself after a sell; also from Activity). Share uses the phone's share sheet where available, otherwise Save image; inside Telegram, "Send in Telegram" or press-and-hold to save. Every card is labelled PAPER TRADING. Tested with `npm run test:cards`.
 
 ## Paper trading
 

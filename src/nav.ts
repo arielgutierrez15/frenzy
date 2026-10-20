@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { Side } from './types';
+import type { CardSpec } from './card/CardSheet';
 
 export type Tab = 'home' | 'feed' | 'radar' | 'wallet' | 'leaders' | 'promote' | 'admin';
 export interface Route { tab: Tab; coin?: string; trader?: string }
@@ -12,7 +13,8 @@ export interface Nav {
   openTrader: (id: string) => void;
   back: () => void;
   trade: (t: TradeIntent) => void;
-  share: () => void;
+  /** open a trading card: the paper wallet (default), an open position, or a closed trade */
+  share: (card?: CardSpec) => void;
   toast: (tone: 'up' | 'down' | 'info' | 'gem', title: string, body?: string) => void;
 }
 

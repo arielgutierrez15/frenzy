@@ -19,7 +19,9 @@ const fonts = '<link rel="preconnect" href="https://fonts.googleapis.com"><link 
 // and keeps it in sessionStorage across reloads). It must load before the app script, so it is written in synchronously.
 const tgLoader = `<script>(function(){try{if(/tgWebApp/.test(location.hash+location.search)||sessionStorage.getItem('__telegram__initParams')){document.write('<script src="https://telegram.org/js/telegram-web-app.js"><\\/script>');}}catch(e){}})();</script>`;
 const head = `<title>BAGZ</title>\n<meta name="theme-color" content="#090909">\n<link rel="icon" type="image/png" href="${b64('public/favicon.png')}">\n<link rel="apple-touch-icon" href="${b64('public/apple-touch-icon.png')}">\n<meta name="claude:viewport-fit-sides" content="cover">\n<meta name="description" content="Live memecoin charts, a Gem Radar for new launches and a paper-trading desk.">\n${fonts}\n${tgLoader}\n<style>${css}</style>`;
-const bodyHtml = `<div id="root"></div>\n<script>${js.replace(/<\/script/g, '<\\/script')}</script>`;
+// splash shown while the app script starts (React replaces it); colours are inline so it works before the CSS applies
+const boot = `<div class="boot" style="min-height:100vh;display:grid;place-items:center;background:#090909"><img src="${b64('public/boot-badge.png')}" width="72" height="72" alt="BAGZ" style="border-radius:50%"></div>`;
+const bodyHtml = `<div id="root">${boot}</div>\n<script>${js.replace(/<\/script/g, '<\\/script')}</script>`;
 if (process.env.BAGZ_PAGE_OUT) {
   writeFileSync(process.env.BAGZ_PAGE_OUT, `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${head}</head><body>${bodyHtml}</body></html>\n`);
   console.log('wrote', process.env.BAGZ_PAGE_OUT);

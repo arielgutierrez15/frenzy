@@ -3,7 +3,6 @@ import type { Side } from './types';
 import { useStore, act, emit, getState } from './store';
 import { useNav, TradeIntent } from './nav';
 import { CoinBadge, Icon, Change } from './ui';
-import { Wordmark } from './brand';
 import { quote, userTrade, placeOrder, change24, mcapOf, userStats, scoreCoin, refreshOne, FEE_RATE } from './engine';
 import { ago, compact, pct, price as fmtPrice, qty as fmtQty, usd, signedUsd } from './format';
 
@@ -76,6 +75,8 @@ export function TradeSheet({ intent, onClose }: { intent: TradeIntent; onClose: 
     }
     nav.toast(side === 'BUY' ? 'up' : r.trade && (r.trade.pnl ?? 0) < 0 ? 'down' : 'up', side === 'BUY' ? 'Bought' : 'Sold', r.message);
     onClose();
+    // closing a trade shows its trading card
+    if (side === 'SELL' && r.trade && r.trade.pnl !== undefined) nav.share({ kind: 'trade', tradeId: r.trade.id });
   };
 
   const presetsUsd = [25, 100, 250, 1000];
@@ -173,36 +174,3 @@ export function TradeSheet({ intent, onClose }: { intent: TradeIntent; onClose: 
 }
 
 function sig(n: number) { return n >= 1 ? n.toFixed(4) : n.toPrecision(4); }
-
-export function ShareCard({ onClose }: { onClose: () => void }) {
-  const st = useStore();
-  const nav = useNav();
-  const s = userStats(st);
-  const best = useMemo(() => {
-    const rows = Object.values(st.user.positions).map((p) => ({ c: st.coins[p.coinId], r: st.coins[p.coinId] ? (p.qty * st.coins[p.coinId].price) / p.cost - 1 : 0 })).filter((x) => x.c);
-    const sells = st.user.trades.filter((t) => t.side === 'SELL' && t.pnl !== undefined).map((t) => ({ c: st.coins[t.coinId], sym: t.symbol, r: t.pnl! / (t.usd - t.pnl!) }));
-    const all = [...rows.map((x) => ({ sym: x.c.symbol, r: x.r })), ...sells.map((x) => ({ sym: x.sym, r: x.r }))];
-    return all.sort((a, b) => b.r - a.r)[0];
-  }, [s.equity, st.user.trades.length]);
-  const text = `My BAGZ paper wallet: ${usd(s.equity)} (${pct(s.pnlPct, 2)}). Win rate ${s.sells ? s.winRate.toFixed(0) + '%' : 'n/a'}.${best ? ` Best play: $${best.sym} ${pct(best.r * 100, 0)}.` : ''}`;
-  return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet share" role="dialog" aria-modal="true" aria-label="Share PnL" onClick={(e) => e.stopPropagation()}>
-        <div className={`pnl-card ${s.pnl >= 0 ? 'is-up' : 'is-down'}`}>
-          <div className="row"><Wordmark /><span className="grow" /><span className="small">paper wallet</span></div>
-          <b className="pnl-big num">{pct(s.pnlPct, 2)}</b>
-          <span className="num">{signedUsd(s.pnl)} on {usd(st.user.deposits, 0)} deposited</span>
-          <div className="pnl-row">
-            <div><span>Value</span><b className="num">{compact(s.equity)}</b></div>
-            <div><span>Win rate</span><b className="num">{s.sells ? s.winRate.toFixed(0) + '%' : '—'}</b></div>
-            <div><span>Best</span><b className="num">{best ? `$${best.sym} ${pct(best.r * 100, 0)}` : '—'}</b></div>
-          </div>
-        </div>
-        <div className="row gap-s">
-          <button className="btn btn-accent grow" onClick={() => navigator.clipboard?.writeText(text).then(() => nav.toast('info', 'Copied to clipboard'), () => nav.toast('info', 'Copy blocked', text))}><Icon.copy size={16} /> Copy summary</button>
-          <button className="btn btn-ghost" onClick={onClose}>Close</button>
-        </div>
-      </div>
-    </div>
-  );
-}
