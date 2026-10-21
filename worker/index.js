@@ -195,7 +195,7 @@ export async function handle(request, env, ctx, deps = {}) {
     if (limited) return json({ error: 'Too many requests' }, 429, { ...base, 'retry-after': '30', 'x-bagz-limit': 'client' });
     if (request.method !== 'GET' && request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, base);
     try {
-      const out = await api(request, env, { fetch: (u, i) => doFetch(u,i0, now: () => (deps.now ? deps.now() : Date.now()), guard: (id) => over(`up:${id}`, budget(id, env), 60_000, deps.now ? deps.now() : Date.now()) });
+      const out = await api(request, env, { fetch: (u, i) => doFetch(u,i), now: () => (deps.now ? deps.now() : Date.now()), guard: (id) => over(`up:${id}`, budget(id, env), 60_000, deps.now ? deps.now() : Date.now()) });
       return json(out, 200, base);
     } catch (e) {
       if (e instanceof ApiError) return json({ error: e.message, ...(e.extra || {}) }, e.status, e.status === 429 ? { ...base, 'retry-after': String((e.extra && e.extra.retryAfter) || 20) } : base);
