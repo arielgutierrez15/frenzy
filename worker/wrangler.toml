@@ -12,7 +12,7 @@ ALLOWED_ORIGINS = "https://arielgutierrez15.github.io"
 # set to "1" only while developing locally
 ALLOW_LOCALHOST = "0"
 # per-IP requests per minute per Worker instance (best effort; also add a Cloudflare rate-limiting rule)
-RATE_PER_MIN = "240"
+RATE_PER_MIN = "300"
 # POST requests per IP per minute
 RATE_POST_PER_MIN = "20"
 # per-provider upstream calls per minute (cache misses), e.g. UPSTREAM_PER_MIN_JUP = "50"
@@ -59,10 +59,13 @@ database_name = "bagz-db"
 database_id = "57bff6ca-2987-4e3a-9b58-9defa51df197"
 migrations_dir = "migrations"
 
-# Hard per-IP rate limit (recommended). Uncomment after checking Cloudflare's current Workers rate-limiting syntax.
-# [[unsafe.bindings]]
-# name = "RATE_LIMITER"
-# type = "ratelimit"
-# namespace_id = "1001"
-# simple = { limit = 120, period = 60 }
+# Hard per-IP rate limit: Cloudflare's rate limiting binding (needs Wrangler 4.36+). The code reads env.RATE_LIMITER.
+# 300 requests per 60 s per visitor IP, counted per Cloudflare location (approximate). Over the limit -> HTTP 429, retry in 30 s.
+# Kept loose so groups on one shared Wi-Fi (campus, household) aren't throttled. period may only be 10 or 60.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
 
+  [ratelimits.simple]
+  limit = 300
+  period = 60
