@@ -65,3 +65,4 @@ migrations_dir = "migrations"
 # type = "ratelimit"
 # namespace_id = "1001"
 # simple = { limit = 120, period = 60 }
+
