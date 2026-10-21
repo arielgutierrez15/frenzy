@@ -13,7 +13,7 @@ const r = await build({
   entryPoints: [DEMO ? 'src/demo/entry.ts' : 'src/main.tsx'],
   // sql.js only touches these when running under Node; the browser never reaches those branches
   external: DEMO ? ['node:fs', 'node:crypto', 'node:path', 'fs', 'crypto', 'path'] : [], bundle: true, minify: true, write: false, outdir: 'dist',
-  alias: { 'bagz-lwc': lwc }, jsx: 'automatic', loader: { '.png': 'dataurl', '.wasm': 'binary', '.sql': 'text' }, target: 'es2020', define: { 'process.env.NODE_ENV': '"production"', __BAGZ_PROXY__: JSON.stringify(process.env.BAGZ_PROXY_URL || ''), __BAGZ_LIVE_TRADING__: JSON.stringify(process.env.BAGZ_LIVE_TRADING || '0') }, logLevel: 'warning',
+  alias: { 'bagz-lwc': lwc }, jsx: 'automatic', loader: { '.png': 'dataurl', '.wasm': 'binary', '.sql': 'text' }, target: 'es2020', define: { 'process.env.NODE_ENV': '"production"', __BAGZ_PROXY__: JSON.stringify(process.env.BAGZ_PROXY_URL ?? (process.env.BAGZ_PAGE_OUT ? '' : 'https://bagz-api.bf7p7hyp4d.workers.dev')), __BAGZ_LIVE_TRADING__: JSON.stringify(process.env.BAGZ_LIVE_TRADING || '0') }, logLevel: 'warning',
 });
 const js = r.outputFiles.find((f) => f.path.endsWith('.js')).text;
 const css = r.outputFiles.find((f) => f.path.endsWith('.css')).text;
