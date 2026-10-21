@@ -75,7 +75,7 @@ async function upstream(ctx, id, url, init = {}) {
   if (ctx.guard && ctx.guard(id)) throw new ApiError(429, `The ${id === 'jup' ? 'Jupiter' : id === 'rpc' ? 'Solana RPC' : id} budget for this minute is used up. Try again shortly.`, { retryAfter: 20 });
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), init.timeout || 10_000);
-  try { return await ctx.fetch(url, { ...init, signal: ctrl.signal, redirect: 'error' }); }
+  try { return await ctx.fetch(url, { ...init, signal: ctrl.signal, redirect: 'manual' }); }
   catch (e) { throw new ApiError(e && e.name === 'AbortError' ? 504 : 502, `${id === 'rpc' ? 'Solana RPC' : 'Upstream'} ${e && e.name === 'AbortError' ? 'timed out' : 'unreachable'}`); }
   finally { clearTimeout(t); }
 }
