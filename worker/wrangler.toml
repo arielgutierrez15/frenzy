@@ -32,14 +32,14 @@ MAX_CU_PRICE_MICROLAMPORTS = "1000000"
 
 # ---- addresses (public keys, not secrets). PLACEHOLDERS: fill in before turning anything on ---------------------------
 # Wallet that owns the fee accounts, and its token accounts that receive the 0.50% fee (must already exist on-chain).
-FEE_WALLET = ""
-FEE_ACCOUNT_WSOL = ""     # wrapped-SOL token account owned by FEE_WALLET (fees on SOL pairs)
-FEE_ACCOUNT_USDC = ""     # USDC token account owned by FEE_WALLET (fees on USDC pairs)
+FEE_WALLET = "3uyXamq9PACB7Qsc1gCmQWqrBDKKrUYvfhcB4tqX2H9p"
+FEE_ACCOUNT_WSOL = "FtYb8HPN6vfTLLh2mRccnc6dGDg8JozBn9FrRmKpZHiW"     # wrapped-SOL token account owned by FEE_WALLET (fees on SOL pairs)
+FEE_ACCOUNT_USDC = "Ff7bLsLdj38ZLRe4815ZNUyMNdtfY2CRLb9iPyUjML9o"     # USDC token account owned by FEE_WALLET (fees on USDC pairs)
 # Wallet that receives BOOST payments, and its USDC associated token account.
-BOOST_WALLET = ""
-BOOST_USDC_ACCOUNT = ""
+BOOST_WALLET = "3uyXamq9PACB7Qsc1gCmQWqrBDKKrUYvfhcB4tqX2H9p"
+BOOST_USDC_ACCOUNT = "Ff7bLsLdj38ZLRe4815ZNUyMNdtfY2CRLb9iPyUjML9o"
 # Admin wallets allowed to approve or reject BOOST listings (comma-separated public keys).
-ADMIN_WALLETS = ""
+ADMIN_WALLETS = "3uyXamq9PACB7Qsc1gCmQWqrBDKKrUYvfhcB4tqX2H9p"
 
 # Secrets are NOT stored here. Add them with `npx wrangler secret put <NAME>`:
 #   JUPITER_API_KEY        Jupiter API key (developers.jup.ag/portal) — required for swaps
