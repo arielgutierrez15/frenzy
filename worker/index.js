@@ -195,7 +195,7 @@ export async function handle(request, env, ctx, deps = {}) {
     if (limited) return json({ error: 'Too many requests' }, 429, { ...base, 'retry-after': '30', 'x-bagz-limit': 'client' });
     if (request.method !== 'GET' && request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, base);
     try {
-      const out = await api(request, env, { fetch: doFetch, now: () => (deps.now ? deps.now() : Date.now()), guard: (id) => over(`up:${id}`, budget(id, env), 60_000, deps.now ? deps.now() : Date.now()) });
+      const out = await api(request, env, { fetch: (u, i) => doFetch(u,i0, now: () => (deps.now ? deps.now() : Date.now()), guard: (id) => over(`up:${id}`, budget(id, env), 60_000, deps.now ? deps.now() : Date.now()) });
       return json(out, 200, base);
     } catch (e) {
       if (e instanceof ApiError) return json({ error: e.message, ...(e.extra || {}) }, e.status, e.status === 429 ? { ...base, 'retry-after': String((e.extra && e.extra.retryAfter) || 20) } : base);
@@ -251,7 +251,7 @@ export async function handle(request, env, ctx, deps = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
   let res;
-  try { res = await doFetch(upstream.toString(), { method, headers, body, signal: ctrl.signal, redirect: 'error' }); }
+  try { res = await doFetch(upstream.toString(), { method, headers, body, signal: ctrl.signal, redirect: 'manual' }); }
   catch (e) { clearTimeout(timer); return json({ error: e && e.name === 'AbortError' ? 'Upstream timed out' : 'Upstream unreachable' }, e && e.name === 'AbortError' ? 504 : 502, base); }
   clearTimeout(timer);
 
