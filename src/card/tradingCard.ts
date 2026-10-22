@@ -118,8 +118,9 @@ export async function renderCard(d: CardData, scale = 1): Promise<Blob> {
   ctx.font = `600 40px ${NUM}`; ctx.fillStyle = tone;
   const usdTxt = fmtUsd(d.pnlUsd);
   ctx.fillText(usdTxt, 64, 504);
+  const usdW = ctx.measureText(usdTxt).width; // measured in the amount's own font, so the caption never overlaps it
   ctx.fillStyle = MUTED; ctx.font = `500 28px ${BODY}`;
-  ctx.fillText(d.caption, 64 + ctx.measureText(usdTxt).width + 64, 502);
+  ctx.fillText(d.caption, 64 + usdW + 28, 502);
 
   // stats row
   const stats = d.stats.slice(0, 3);
@@ -135,14 +136,12 @@ export async function renderCard(d: CardData, scale = 1): Promise<Blob> {
   // footer
   if (badge) ctx.drawImage(badge, 64, 660, 44, 44);
   ctx.fillStyle = '#FFFFFF'; ctx.font = `700 24px ${BODY}`; ctx.fillText('Trade memecoins on BAGZ', 122, 690);
-  ctx.fillStyle = MUTED; ctx.font = `500 20px ${NUM}`;
-  const link = d.link.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  ctx.textAlign = 'right'; ctx.fillText(link.length > 44 ? link.slice(0, 43) + '…' : link, CARD_W - 64, 690); ctx.textAlign = 'left';
+  // no website address on the card image
 
   return new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error('Couldn’t draw the card'))), 'image/png'));
 }
 
 export function cardText(d: CardData): string {
   const what = d.kind === 'wallet' ? 'My BAGZ paper wallet' : d.kind === 'trade' ? `Closed $${d.symbol} on BAGZ (paper)` : `Holding $${d.symbol} on BAGZ (paper)`;
-  return `${what}: ${fmtPct(d.pnlPct)} (${fmtUsd(d.pnlUsd)}). ${d.link}`;
+  return `${what}: ${fmtPct(d.pnlPct)} (${fmtUsd(d.pnlUsd)}).`;
 }

@@ -118,7 +118,7 @@ export function CardSheet({ spec, onClose }: { spec: CardSpec; onClose: () => vo
     document.body.appendChild(a); a.click(); a.remove();
   };
   const copy = () => navigator.clipboard?.writeText(text).then(() => nav.toast('info', 'Copied to clipboard'), () => nav.toast('info', 'Copy blocked', text));
-  const toTelegram = () => openExternal(`https://t.me/share/url?url=${encodeURIComponent(data.link)}&text=${encodeURIComponent(text.replace(` ${data.link}`, ''))}`);
+  const toTelegram = () => openExternal(`https://t.me/share/url?url=${encodeURIComponent(data.link)}&text=${encodeURIComponent(text)}`);
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
