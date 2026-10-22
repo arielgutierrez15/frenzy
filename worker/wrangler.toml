@@ -8,7 +8,7 @@ compatibility_date = "2026-01-01"
 
 [vars]
 # comma-separated list of sites allowed to call the API from a browser
-ALLOWED_ORIGINS = "https://arielgutierrez15.github.io"
+ALLOWED_ORIGINS = "https://bagz.pages.dev,https://arielgutierrez15.github.io"
 # set to "1" only while developing locally
 ALLOW_LOCALHOST = "0"
 # per-IP requests per minute per Worker instance (best effort; also add a Cloudflare rate-limiting rule)
