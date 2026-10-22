@@ -22,6 +22,7 @@ import {
   PROGRAMS, MINTS, eqBytes,
 } from './solana.js';
 import { social, currentUser } from './social.js';
+import { vault } from './vault.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -701,6 +702,8 @@ export async function api(request, env, deps) {
   let p;
   const s = await social(ctx, request, path, body, url);
   if (s !== undefined) return s;
+  const v = await vault(ctx, request, path, body);
+  if (v !== undefined) return v;
   if (route('GET', /^\/config$/)) return publicConfig(env);
   if (route('GET', /^\/wallet\/balances$/)) return balances(ctx, url.searchParams.get('owner'));
   if (route('POST', /^\/swap\/prepare$/)) return swapPrepare(ctx, body);

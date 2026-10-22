@@ -14,6 +14,8 @@ import wasm from './vendor/sql-wasm.wasm';
 import m1 from '../../worker/migrations/0001_swap_boost.sql';
 // @ts-ignore text loader
 import m2 from '../../worker/migrations/0002_social.sql';
+// @ts-ignore sql text
+import m3 from '../../worker/migrations/0003_vault.sql';
 
 export const DEMO_BASE = 'https://test-copy.bagz';
 const DB_NAME = 'bagz-test-copy', STORE = 'db', KEY = 'sqlite';
@@ -82,6 +84,7 @@ function start() {
     const db = saved ? new SQL.Database(saved) : new SQL.Database();
     db.exec('PRAGMA foreign_keys = ON');
     if (!saved) { db.exec(m1); db.exec(m2); }
+    db.exec(m3); // IF NOT EXISTS: also upgrades test copies saved before the Vault
     const d1 = new BrowserD1(db);
     // save after writes, at most once a second, and when the page is hidden
     setInterval(() => { if (d1.dirty) { d1.dirty = false; saveBytes(db.export()); } }, 1000);

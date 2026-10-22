@@ -18,8 +18,8 @@ const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok }); con
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Cards moved into the phone's More sheet
 async function openCards(p) {
-  if (await p.locator('.tabbar').isVisible()) { await p.locator('.tabbar .tab-more').click(); await p.locator('.more-sheet .more-item', { hasText: 'Cards' }).click(); }
-  else await p.locator('.rail-nav button', { hasText: 'Cards' }).click();
+  if (await p.locator('.tabbar').isVisible()) { await p.locator('.tabbar .tab-more').click(); await p.locator('.more-sheet .more-item', { hasText: 'Trade cards' }).click(); }
+  else await p.locator('.rail-nav button', { hasText: 'Trade cards' }).click();
 }
 
 async function until(fn, ms = 20000, step = 150) { const t0 = Date.now(); for (;;) { try { const v = await fn(); if (v) return v; } catch { /* retry */ } if (Date.now() - t0 > ms) return false; await sleep(step); } }

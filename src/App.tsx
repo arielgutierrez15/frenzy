@@ -5,6 +5,7 @@ import { HomeView, RadarView, WalletView, LeadersView, CoinView, TraderView, Fol
 import { TradeSheet } from './TradeSheet';
 import { CardSheet, type CardSpec } from './card/CardSheet';
 import { CardsView } from './card/CardsView';
+import { VaultView } from './vault/VaultView';
 import { Avatar, CoinBadge, Icon, ScoreRing } from './ui';
 import { toastQueue, userStats, scoreCoin, topWallets, short } from './engine';
 import { ago, compact, pct, usd, signedUsd } from './format';
@@ -20,13 +21,14 @@ import { inTelegram, syncBackButton, startMint, haptic } from './telegram';
 const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'radar', label: 'Radar', icon: 'radar' },
-  { id: 'cards', label: 'Cards', icon: 'card' },
+  { id: 'vault', label: 'The Vault', icon: 'card' },
+  { id: 'cards', label: 'Trade cards', icon: 'share' },
   { id: 'ranks', label: 'Ranks', icon: 'trophy' },
   { id: 'chats', label: 'Chats', icon: 'chat' },
   { id: 'wallet', label: 'Wallet', icon: 'wallet' },
 ];
 
-// phone bottom bar: Home, Radar, the BAGZ emblem (opens Live), Wallet, More
+// phone bottom bar: Home, Radar, the BAGZ emblem (opens the Vault), Wallet, More
 const BAR: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'radar', label: 'Radar', icon: 'radar' },
@@ -40,7 +42,7 @@ const MORE: { title: string; items: { id: Tab; label: string; hint: string; icon
     { id: 'me', label: 'Profile', hint: 'Your public page and settings', icon: 'user' },
   ] },
   { title: 'Your stuff', items: [
-    { id: 'cards', label: 'Cards', hint: 'Trading cards you saved', icon: 'card' },
+    { id: 'cards', label: 'Trade cards', hint: 'Share cards of your paper trades', icon: 'share' },
     { id: 'promote', label: 'BAGZ Boost', hint: 'Promote a token', icon: 'bolt' },
   ] },
 ];
@@ -129,7 +131,7 @@ export default function App() {
   const view = route.coin ? <CoinView key={route.coin} id={route.coin} /> : route.trader ? <TraderView key={route.trader} id={route.trader} /> :
     route.user ? <ProfileView key={route.user} username={route.user} /> : route.chat ? <ChatRoom key={route.chat} id={route.chat} /> :
     route.tab === 'home' ? <HomeView /> : route.tab === 'feed' ? <RadarView key="live" initial="live" /> : route.tab === 'radar' ? <RadarView key="radar" /> : route.tab === 'wallet' ? <WalletView /> :
-    route.tab === 'cards' ? <CardsView /> : route.tab === 'ranks' ? <RanksView onchain={<LeadersView embedded />} /> : route.tab === 'chats' ? <ChatsView section={route.section} /> : route.tab === 'me' ? <ProfileView /> :
+    route.tab === 'cards' ? <CardsView /> : route.tab === 'vault' ? <VaultView /> : route.tab === 'ranks' ? <RanksView onchain={<LeadersView embedded />} /> : route.tab === 'chats' ? <ChatsView section={route.section} /> : route.tab === 'me' ? <ProfileView /> :
     route.tab === 'promote' ? <PromoteView /> : route.tab === 'admin' ? <AdminView /> : <LeadersView />;
   const sub = !!(route.coin || route.trader || route.user || route.chat);
   const chatCount = counts.unread + counts.requests;
@@ -203,7 +205,7 @@ export default function App() {
         <nav className="tabbar" aria-label="Main">
           {barButton(BAR[0], route.tab === 'home' && !moreOpen)}
           {barButton(BAR[1], route.tab === 'radar' && !moreOpen)}
-          <button className={`tab-center${route.tab === 'feed' && !moreOpen ? ' on' : ''}`} onClick={() => { haptic.tap(); setMoreOpen(false); nav.go('feed'); }} aria-current={route.tab === 'feed'} aria-label="Live">
+          <button className={`tab-center${route.tab === 'vault' && !moreOpen ? ' on' : ''}`} onClick={() => { haptic.tap(); setMoreOpen(false); nav.go('vault'); }} aria-current={route.tab === 'vault'} aria-label="The Vault">
             <img className="tab-emblem" src={navEmblem} alt="" width={56} height={56} />
           </button>
           {barButton(BAR[2], route.tab === 'wallet' && !moreOpen)}

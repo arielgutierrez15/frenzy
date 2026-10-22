@@ -112,7 +112,7 @@ check('Ana signs up (username, password, picture) and lands on home', await sign
 check('picture shows (served by the in-page server)', await until(async () => p.evaluate(() => { const i = document.querySelector('.topbar-me img') as HTMLImageElement; return !!i && i.complete && i.naturalWidth === 320; }), 8000));
 await paperTrade(p, 'buy');
 await paperTrade(p, 'sell');
-await tab(p, /^Cards$/).click();
+await tab(p, /^Trade cards$/).click();
 check('Cards tab: closing the trade saved its card', await until(async () => (await p.locator('.card-thumb').count()) === 1, 8000));
 check('Cards tab: the card thumbnail is drawn', await until(async () => p.evaluate(() => { const i = document.querySelector('.card-thumb img') as HTMLImageElement; return !!i && i.complete && i.naturalWidth === 600; }), 8000));
 await p.locator('.card-thumb').first().click();
@@ -184,7 +184,7 @@ await tab(p, /^Live$/).click();
 await p.locator('.seg button', { hasText: /^Friends$/ }).click();
 check('Live → Friends: Ana sees no trades from Ben, because Ben has his own empty paper wallet', await until(async () => /haven’t traded yet/.test(await text(p, 'main')), 8000));
 check('phone layout fits', await noHScroll(p));
-await tab(p, /^Cards$/).click();
+await tab(p, /^Trade cards$/).click();
 check('phone: Cards tab fits', await noHScroll(p));
 check('nothing was sent to any BAGZ server (only market data requests left the page)', !netCalls.some((u) => /test-copy\.bagz|workers\.dev/.test(u)), netCalls.filter((u) => /test-copy\.bagz|workers\.dev/.test(u)).slice(0, 3).join(' '));
 await ctx.close();

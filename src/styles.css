@@ -702,3 +702,61 @@ img.avatar-you { border-radius: 50%; object-fit: cover; padding: 0; }
 .more-item.on b { color: var(--accent-fg); }
 .more-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-fg); flex: none; }
 .more-dot { position: static; flex: none; }
+
+/* ---- The Vault ---- */
+.vault-head { display: flex; align-items: flex-start; gap: 12px; }
+.vault-head > div { flex: 1; min-width: 0; }
+.bz-coin { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; white-space: nowrap; }
+.bz-coin-ico { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font: 900 0.68rem/1 var(--f-display); color: #3a2400; background: radial-gradient(circle at 35% 30%, #ffe69a, #ffbf2e 55%, #c98a00); box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.25); flex: none; }
+.bz-coin.big { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px 7px 9px; font-size: 1.05rem; }
+.bz-coin.big .bz-coin-ico { width: 24px; height: 24px; font-size: 0.85rem; }
+
+.bz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.bz-tile { display: flex; flex-direction: column; gap: 8px; background: none; border: 0; padding: 0; text-align: left; color: var(--fg); min-width: 0; }
+.bz-tile:active .bz-card { transform: scale(0.98); }
+.bz-tile.sold .bz-card { filter: grayscale(0.85) brightness(0.6); }
+.vault .cat-row .chip-btn { white-space: nowrap; flex: none; }
+.bz-tile-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px; }
+
+/* the card frame (rarity sets the colour) */
+.bz-card { --rc: #3d9bff; --rc-soft: rgba(61, 155, 255, 0.35); position: relative; display: flex; flex-direction: column; aspect-ratio: 5 / 7; background: #0b0b0d; border: 2px solid var(--rc); border-radius: 14px; padding: 6px; gap: 5px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 18px var(--rc-soft), inset 0 0 12px var(--rc-soft); overflow: hidden; transition: transform 0.12s; container-type: inline-size; }
+.bz-card.r-rare { --rc: #ffc531; --rc-soft: rgba(255, 197, 49, 0.35); }
+.bz-card.r-gem { --rc: #ff008c; --rc-soft: rgba(255, 0, 140, 0.45); }
+.bz-card::after { content: ''; position: absolute; inset: 0; border-radius: 12px; pointer-events: none; background: linear-gradient(135deg, transparent 38%, rgba(255, 255, 255, 0.07) 48%, transparent 58%); }
+.bz-card-head { display: grid; grid-template-columns: 1fr auto; align-items: end; column-gap: 6px; padding: 2px 4px 4px; border-bottom: 1px solid color-mix(in srgb, var(--rc) 45%, transparent); }
+.bz-card-name { font: italic 800 11cqw/1 var(--f-display); letter-spacing: -0.02em; color: #fff; white-space: nowrap; overflow: hidden; }
+.bz-card-name i, .bz-card-mode i { color: var(--rc); margin-left: 3px; font-style: italic; letter-spacing: -0.15em; }
+.bz-card-no { font-size: 11cqw; font-weight: 700; color: var(--rc); line-height: 1; text-align: right; }
+.bz-card-serial { grid-column: 1 / -1; justify-self: end; font-size: 6.2cqw; color: #d8d8de; margin-top: 2px; }
+.bz-card-art { position: relative; flex: 1; min-height: 0; border-radius: 8px; overflow: hidden; background: var(--panel-2); border: 1px solid color-mix(in srgb, var(--rc) 40%, transparent); }
+.bz-card-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bz-card-art-missing { width: 100%; height: 100%; display: grid; place-items: center; color: var(--rc); }
+.bz-card-art-missing svg, .bz-card-art-missing img { width: 40%; }
+.bz-card-rarity { position: absolute; left: 6px; top: 6px; font: 800 5.6cqw/1 var(--f-body); text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 6px; border-radius: 999px; background: rgba(9, 9, 9, 0.78); color: var(--rc); border: 1px solid var(--rc); }
+.bz-card-foot { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; padding: 2px 2px 0; }
+.bz-card-icon { width: 15cqw; height: 15cqw; border-radius: 8px; display: grid; place-items: center; background: #000; border: 1px solid var(--rc); color: #fff; }
+.bz-card-icon svg, .bz-card-icon img { width: 78%; height: 78%; }
+.bz-card-mode { font: italic 800 7.6cqw/1 var(--f-display); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bz-card-globe { width: 11cqw; height: 11cqw; color: var(--rc); display: grid; }
+
+.bz-sheet { max-width: 420px; }
+.bz-sheet-card { width: min(260px, 70%); margin: 0 auto; }
+.bz-reveal .bz-card { animation: bz-pop 0.5s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes bz-pop { from { transform: scale(0.6) rotate(-6deg); opacity: 0; } }
+.bz-facts { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; }
+.bz-facts > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
+.bz-facts > div + div { border-left: 1px solid var(--line); }
+
+.bz-welcome { border-color: color-mix(in srgb, #ffc531 55%, var(--line)); background: linear-gradient(135deg, rgba(255, 197, 49, 0.10), var(--panel) 60%); }
+.bz-challenges { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.bz-challenges li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.bz-challenges li.claimed b { color: var(--muted); }
+.bz-bar { display: block; height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; margin: 6px 0 3px; }
+.bz-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.bz-claim { min-width: 64px; font-family: var(--f-num); }
+.vault-empty, .vault-soon { align-items: flex-start; }
+@media (max-width: 780px) {
+  .bz-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .vault-head .bz-coin.big { font-size: 0.95rem; }
+}
+@media (prefers-reduced-motion: reduce) { .bz-reveal .bz-card { animation: none; } }
