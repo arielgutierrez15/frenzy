@@ -402,7 +402,8 @@ textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
   .tab-center-ico { width: 52px; height: 52px; margin-top: -24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 5px var(--ink), 0 8px 22px var(--card-glow); }
   .tabbar .tab-center.on { color: var(--accent-fg); }
   .tabbar .tab-center.on .tab-center-ico { box-shadow: 0 0 0 5px var(--ink), 0 0 0 7px var(--accent-fg), 0 8px 26px var(--card-glow); }
-  .more-backdrop { z-index: 24; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  .sheet-backdrop.more-backdrop { z-index: 24; padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
+  .sheet.more-sheet { max-height: calc(100vh - 140px); }
   .more-sheet { border-radius: 22px 22px 0 0; padding-bottom: 14px; }
   .toasts { top: calc(66px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
   .trade-bar { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
