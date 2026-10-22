@@ -716,6 +716,8 @@ img.avatar-you { border-radius: 50%; object-fit: cover; padding: 0; }
 .bz-tile:active .bz-card { transform: scale(0.98); }
 .bz-tile.sold .bz-card { filter: grayscale(0.85) brightness(0.6); }
 .vault .cat-row .chip-btn { white-space: nowrap; flex: none; }
+.chip-r::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--rc); box-shadow: 0 0 6px var(--rc); }
+.chip-common { --rc: #3d9bff; } .chip-rare { --rc: #ffc531; } .chip-gem { --rc: #ff008c; }
 .bz-tile-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px; }
 
 /* the card frame (rarity sets the colour) */

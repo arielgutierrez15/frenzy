@@ -78,17 +78,17 @@ test('vault: buying spends coins, gives the next serial, one copy each, never ov
   const s = setup();
   const tok = await s.user('ben_v');
   await s.call('/vault/claim', { body: { id: 'welcome' }, token: tok });
-  assert.equal((await s.call('/vault/buy', { body: { card: 'bear-01' }, token: tok })).status, 402, 'rare costs 250');
+  assert.equal((await s.call('/vault/buy', { body: { card: 'bear-02' }, token: tok })).status, 402, 'rare costs 250');
   assert.equal((await s.call('/vault/buy', { body: { card: 'nope-01' }, token: tok })).status, 400);
-  assert.equal((await s.call('/vault/buy', { body: { card: 'bull-01', pay: 'sol' }, token: tok })).status, 403, 'real money is off');
-  const r = await s.call('/vault/buy', { body: { card: 'bull-01' }, token: tok });
+  assert.equal((await s.call('/vault/buy', { body: { card: 'bull-02', pay: 'sol' }, token: tok })).status, 403, 'real money is off');
+  const r = await s.call('/vault/buy', { body: { card: 'bull-02' }, token: tok });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual([r.body.bought.card, r.body.bought.serial], ['bull-01', 1]);
+  assert.deepEqual([r.body.bought.card, r.body.bought.serial], ['bull-02', 1]);
   assert.equal(r.body.balance, 0);
-  assert.equal(r.body.minted['bull-01'], 1);
-  assert.deepEqual(r.body.mine.map((m: any) => m.card), ['bull-01']);
-  assert.equal((await s.call('/vault/buy', { body: { card: 'bull-01' }, token: tok })).status, 400, 'one copy each');
-  assert.equal((await s.call('/vault/buy', { body: { card: 'bull-02' }, token: tok })).status, 402, 'no coins left');
+  assert.equal(r.body.minted['bull-02'], 1);
+  assert.deepEqual(r.body.mine.map((m: any) => m.card), ['bull-02']);
+  assert.equal((await s.call('/vault/buy', { body: { card: 'bull-02' }, token: tok })).status, 400, 'one copy each');
+  assert.equal((await s.call('/vault/buy', { body: { card: 'bull-04' }, token: tok })).status, 402, 'no coins left');
   assert.equal((await s.call('/vault', { token: tok })).body.balance, 0, 'a failed buy takes nothing');
 });
 
@@ -98,7 +98,7 @@ test('vault: only 30 copies of a card ever exist', async () => {
   for (let i = 0; i < 31; i++) {
     const tok = await s.user(`u${i}_v`);
     await s.call('/vault/claim', { body: { id: 'welcome' }, token: tok });
-    const r = await s.call('/vault/buy', { body: { card: 'bull-03' }, token: tok });
+    const r = await s.call('/vault/buy', { body: { card: 'bull-06' }, token: tok });
     if (i < 30) { assert.equal(r.status, 200, JSON.stringify(r.body)); serials.push(r.body.bought.serial); }
     else {
       assert.equal(r.status, 409, '31st buyer gets sold out');
@@ -106,4 +106,11 @@ test('vault: only 30 copies of a card ever exist', async () => {
     }
   }
   assert.deepEqual(serials, Array.from({ length: 30 }, (_, i) => i + 1));
+});
+
+test('vault: rarity is per card, every animal has each rarity', async () => {
+  // @ts-ignore plain JS
+  const { CARDS, priceOf } = await import('../worker/vault-cards.js');
+  for (const series of ['ape', 'bear', 'bull']) for (const r of ['common', 'rare', 'gem']) assert.ok(CARDS.some((c: any) => c.series === series && c.rarity === r), `${series} has a ${r}`);
+  assert.equal(priceOf(CARDS.find((c: any) => c.id === 'bull-01')), 600, 'Bull Trade is a Gem');
 });

@@ -129,14 +129,16 @@ export function VaultView() {
 }
 
 function Shop({ v, owned, onOpen }: { v: VaultState; owned: Map<string, Owned>; onOpen: (id: string) => void }) {
-  const [series, setSeries] = useState<'all' | Series>('all');
-  const list = cards.filter((c) => series === 'all' || c.series === series);
+  type F = 'all' | Rarity | Series;
+  const [f, setF] = useState<F>('all');
+  const list = cards.filter((c) => f === 'all' || c.rarity === f || c.series === f);
+  const filters: F[] = ['all', 'gem', 'rare', 'common', 'ape', 'bear', 'bull'];
   return (
     <>
       <div className="cat-row">
-        {(['all', 'ape', 'bear', 'bull'] as const).map((s) => (
-          <button key={s} className={`chip-btn${series === s ? ' on' : ''}`} onClick={() => setSeries(s)}>
-            {s === 'all' ? 'All' : SERIES[s].label}
+        {filters.map((x) => (
+          <button key={x} className={`chip-btn${f === x ? ' on' : ''}${x in RARITY ? ` chip-r chip-${x}` : ''}`} onClick={() => setF(x)}>
+            {x === 'all' ? 'All' : x in RARITY ? RARITY[x].label : SERIES[x].label}
           </button>
         ))}
       </div>
