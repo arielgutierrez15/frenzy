@@ -17,6 +17,7 @@ export const Icon = {
   bell: I(<><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16z" /><path d="M10 20.5a2 2 0 0 0 4 0" /></>),
   back: I(<path d="M15 5l-7 7 7 7" />),
   close: I(<path d="M6 6l12 12M18 6L6 18" />),
+  search: I(<><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></>),
   heart: I(<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />),
   copy: I(<><rect x="8" y="8" width="12" height="12" rx="2.5" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>),
   bolt: I(<path d="M13 3L5 13h6l-1 8 8-10h-6l1-8z" />),

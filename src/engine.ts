@@ -462,6 +462,25 @@ export async function refreshOne(st: State, id: string) {
   afterPrices(st);
 }
 
+/**
+ * Search bar: ask Jupiter for Solana tokens matching a name, symbol or mint address. Results are merged into the
+ * store like any other Jupiter token, so they open and trade like coins found by the radar. Returns the matched coin ids.
+ */
+export async function searchTokens(st: State, query: string): Promise<string[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const j = await getJSON(st, 'jup-search', `/tokens/v2/search?query=${encodeURIComponent(q)}`, { validate: parseJupiterTokens, prio: 0 });
+  if (!Array.isArray(j)) return [];
+  const at = st.sources['jup-search']?.at;
+  const ids: string[] = [];
+  for (const t of j.slice(0, 20)) {
+    fromJupiter(st, t, undefined, at);
+    const id = t?.id ? keyOf('solana', t.id) : '';
+    if (id && st.coins[id]) ids.push(id);
+  }
+  return ids;
+}
+
 export async function refreshSol(st: State) {
   const SOL = 'So11111111111111111111111111111111111111112';
   const j = await getJSON(st, 'jup-price', `/price/v3?ids=${SOL}`, { validate: parseJupiterPrice, prio: 1 });
