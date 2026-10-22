@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, act, start } from './store';
 import { NavCtx, useNav, Nav, Route, Tab, TradeIntent } from './nav';
-import { HomeView, FeedView, RadarView, WalletView, LeadersView, CoinView, TraderView, FollowButton } from './views';
+import { HomeView, RadarView, WalletView, LeadersView, CoinView, TraderView, FollowButton } from './views';
 import { TradeSheet } from './TradeSheet';
 import { CardSheet, type CardSpec } from './card/CardSheet';
 import { CardsView } from './card/CardsView';
@@ -14,22 +14,21 @@ import { PromoteView } from './boost/PromoteView';
 import { useSession, initSession, syncNow } from './social/session';
 import { Onboarding, ProfileView, RanksView, ChatsView, ChatRoom, UserAvatar, useSocialCounts, refreshCounts, TestCopyNote } from './social/ui';
 import { AdminView } from './boost/AdminView';
+import navEmblem from './assets/bagz-nav-emblem.png';
 import { inTelegram, syncBackButton, startMint, haptic } from './telegram';
 
 const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
-  { id: 'feed', label: 'Live', icon: 'feed' },
-  { id: 'radar', label: 'Gem Radar', icon: 'radar' },
+  { id: 'radar', label: 'Radar', icon: 'radar' },
   { id: 'cards', label: 'Cards', icon: 'card' },
   { id: 'ranks', label: 'Ranks', icon: 'trophy' },
   { id: 'chats', label: 'Chats', icon: 'chat' },
   { id: 'wallet', label: 'Wallet', icon: 'wallet' },
 ];
 
-// phone bottom bar: four everyday tabs plus More; Radar sits raised in the middle
+// phone bottom bar: Home, Radar, the BAGZ emblem (opens Live), Wallet, More
 const BAR: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
-  { id: 'feed', label: 'Live', icon: 'feed' },
   { id: 'radar', label: 'Radar', icon: 'radar' },
   { id: 'wallet', label: 'Wallet', icon: 'wallet' },
 ];
@@ -129,7 +128,7 @@ export default function App() {
   const unread = st.notifs.filter((n) => !n.read).length;
   const view = route.coin ? <CoinView key={route.coin} id={route.coin} /> : route.trader ? <TraderView key={route.trader} id={route.trader} /> :
     route.user ? <ProfileView key={route.user} username={route.user} /> : route.chat ? <ChatRoom key={route.chat} id={route.chat} /> :
-    route.tab === 'home' ? <HomeView /> : route.tab === 'feed' ? <FeedView /> : route.tab === 'radar' ? <RadarView /> : route.tab === 'wallet' ? <WalletView /> :
+    route.tab === 'home' ? <HomeView /> : route.tab === 'feed' ? <RadarView key="live" initial="live" /> : route.tab === 'radar' ? <RadarView key="radar" /> : route.tab === 'wallet' ? <WalletView /> :
     route.tab === 'cards' ? <CardsView /> : route.tab === 'ranks' ? <RanksView onchain={<LeadersView embedded />} /> : route.tab === 'chats' ? <ChatsView section={route.section} /> : route.tab === 'me' ? <ProfileView /> :
     route.tab === 'promote' ? <PromoteView /> : route.tab === 'admin' ? <AdminView /> : <LeadersView />;
   const sub = !!(route.coin || route.trader || route.user || route.chat);
@@ -160,7 +159,7 @@ export default function App() {
             {TABS.map((t) => {
               const Ico = Icon[t.icon];
               return (
-                <button key={t.id} className={route.tab === t.id && !sub ? 'on' : ''} onClick={() => nav.go(t.id)}>
+                <button key={t.id} className={(route.tab === t.id || (t.id === 'radar' && route.tab === 'feed')) && !sub ? 'on' : ''} onClick={() => nav.go(t.id)}>
                   <Ico size={20} /><span>{t.label}</span>{t.id === 'chats' && counts.unread + counts.requests > 0 && <span className="dot-count num tab-dot">{counts.unread + counts.requests > 9 ? '9+' : counts.unread + counts.requests}</span>}
                 </button>
               );
@@ -202,12 +201,12 @@ export default function App() {
         {showAside && <Aside />}
 
         <nav className="tabbar" aria-label="Main">
-          {BAR.slice(0, 2).map((t) => barButton(t, route.tab === t.id && !moreOpen))}
-          <button className={`tab-center${route.tab === 'radar' && !moreOpen ? ' on' : ''}`} onClick={() => { haptic.tap(); setMoreOpen(false); nav.go('radar'); }} aria-current={route.tab === 'radar'}>
-            <span className="tab-center-ico"><Icon.radar size={24} /></span>
-            <span>Radar</span>
+          {barButton(BAR[0], route.tab === 'home' && !moreOpen)}
+          {barButton(BAR[1], route.tab === 'radar' && !moreOpen)}
+          <button className={`tab-center${route.tab === 'feed' && !moreOpen ? ' on' : ''}`} onClick={() => { haptic.tap(); setMoreOpen(false); nav.go('feed'); }} aria-current={route.tab === 'feed'} aria-label="Live">
+            <img className="tab-emblem" src={navEmblem} alt="" width={56} height={56} />
           </button>
-          {barButton(BAR[3], route.tab === 'wallet' && !moreOpen)}
+          {barButton(BAR[2], route.tab === 'wallet' && !moreOpen)}
           <button className={`tab-more${moreOpen || IN_MORE.has(route.tab) ? ' on' : ''}`} onClick={() => { haptic.tap(); setMoreOpen((o) => !o); }} aria-expanded={moreOpen} aria-label={chatCount > 0 ? `More, ${chatCount} new chats` : 'More'}>
             <span className="tab-ico"><Icon.more size={22} />{chatCount > 0 && <span className="dot-count num tab-dot">{chatCount > 9 ? '9+' : chatCount}</span>}</span>
             <span>More</span>

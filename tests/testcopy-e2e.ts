@@ -78,6 +78,8 @@ async function signUp(p: any, name: string, pw: string, pic: string) {
 // phone: Cards, Chats, Ranks and Profile live in the More sheet, so open it when the tab isn't on the bar
 const tab = (p: any, label: RegExp) => ({
   click: async () => {
+    // Live is a tab inside Radar now
+    if (label.test('Live')) { await tab(p, /^Radar$/).click(); return p.locator('.seg button', { hasText: /^Live$/ }).first().click(); }
     const direct = p.locator('.tabbar button:visible, .rail-nav button:visible, .more-sheet .more-item:visible').filter({ has: p.locator('span, b', { hasText: label }) }).first();
     if (await direct.count()) return direct.click();
     await p.locator('.tabbar .tab-more').click();

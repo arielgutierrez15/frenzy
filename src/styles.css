@@ -398,10 +398,10 @@ textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
   .tabbar button .tab-ico { padding: 4px 14px; border-radius: 999px; transition: background 0.15s; }
   .tabbar button.on { color: var(--accent-fg); }
   .tabbar button.on .tab-ico { background: var(--accent-soft); }
-  .tabbar .tab-center { color: var(--fg); }
-  .tab-center-ico { width: 52px; height: 52px; margin-top: -24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 5px var(--ink), 0 8px 22px var(--card-glow); }
-  .tabbar .tab-center.on { color: var(--accent-fg); }
-  .tabbar .tab-center.on .tab-center-ico { box-shadow: 0 0 0 5px var(--ink), 0 0 0 7px var(--accent-fg), 0 8px 26px var(--card-glow); }
+  .tabbar .tab-center { justify-content: flex-end; padding-bottom: 6px; }
+  .tab-emblem { width: 58px; height: 58px; margin-top: -26px; border-radius: 50%; display: block; background: var(--ink); box-shadow: 0 0 0 4px var(--ink), 0 0 0 6px var(--accent), 0 8px 22px var(--card-glow); transition: transform 0.15s; }
+  .tabbar .tab-center:active .tab-emblem { transform: scale(0.94); }
+  .tabbar .tab-center.on .tab-emblem { box-shadow: 0 0 0 4px var(--ink), 0 0 0 7px var(--accent-fg), 0 0 28px var(--card-glow); }
   .sheet-backdrop.more-backdrop { z-index: 24; padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
   .sheet.more-sheet { max-height: calc(100vh - 140px); }
   .more-sheet { border-radius: 22px 22px 0 0; padding-bottom: 14px; }

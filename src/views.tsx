@@ -154,7 +154,7 @@ function ThesisCard({ th }: { th: Thesis }) {
 }
 
 type FeedFilter = 'all' | 'friends' | 'big' | 'following' | 'you';
-export function FeedView() {
+export function FeedView({ top }: { top?: React.ReactNode } = {}) {
   const st = useStore();
   const nav = useNav();
   const [f, setF] = useState<FeedFilter>('all');
@@ -167,6 +167,7 @@ export function FeedView() {
           <p className="muted">Real swaps from real wallets, pulled from GeckoTerminal for the most active pools and the coins you hold. Follow a wallet to get alerts when it trades.</p>
         </div>
       </header>
+      {top}
       <Seg label="Feed filter" value={f} onChange={setF} options={[{ v: 'all', l: 'All swaps' }, { v: 'friends', l: 'Friends' }, { v: 'big', l: '≥ $1K' }, { v: 'following', l: `Following · ${st.user.following.length}` }, { v: 'you', l: 'You' }]} />
       {f === 'friends' ? <FriendsFeed /> : <DataGate>
         {f === 'you' ? (
@@ -281,9 +282,12 @@ export function SourceBar() {
 }
 
 type Sort = 'score' | 'new' | 'volume' | 'mcap';
-export function RadarView() {
+type DiscoverMode = 'radar' | 'live' | 'blue';
+const DISCOVER = [{ v: 'radar' as const, l: 'Gem Radar' }, { v: 'live' as const, l: 'Live' }, { v: 'blue' as const, l: 'Blue chips' }];
+
+export function RadarView({ initial = 'radar' }: { initial?: DiscoverMode } = {}) {
   const st = useStore();
-  const [mode, setMode] = useState<'radar' | 'blue'>('radar');
+  const [mode, setMode] = useState<DiscoverMode>(initial);
   const [cat, setCat] = useState<string>('all');
   const [chain, setChain] = useState<string>('all');
   const [min, setMin] = useState<string>('0');
@@ -302,6 +306,9 @@ export function RadarView() {
     .slice(0, 60);
   const rugs = all.filter((c) => c.rugged).length;
   const majors = st.majors.map((id) => st.coins[id]).filter((c) => c && c.price > 0).sort((a, b) => b.mcap - a.mcap);
+  const discover = <Seg label="Discover" value={mode} onChange={setMode} options={DISCOVER} />;
+  // Live (real swaps) is a tab inside Radar now
+  if (mode === 'live') return <FeedView top={discover} />;
   return (
     <section className="view">
       <header className="view-head">
@@ -310,7 +317,7 @@ export function RadarView() {
           <p className="muted">{mode === 'radar' ? 'Coins found on DexScreener, Jupiter, GeckoTerminal and pump.fun, merged by contract address and scored 0–100 on the contract and holder checks those sites report. Unknown checks count as unknown, not as passes.' : 'Established memecoins with live prices from DexScreener.'}</p>
         </div>
       </header>
-      <Seg label="Discover" value={mode} onChange={setMode} options={[{ v: 'radar', l: 'Gem Radar' }, { v: 'blue', l: 'Blue chips' }]} />
+      {discover}
       <SourceBar />
       <DataGate>
         {mode === 'radar' ? (
