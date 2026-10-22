@@ -75,7 +75,15 @@ async function signUp(p: any, name: string, pw: string, pic: string) {
   await p.locator('.onboard button', { hasText: 'Save and start trading' }).click();
   return until(async () => (await p.locator('.onboard').count()) === 0 && (await p.locator('.tabbar, .rail').count()) > 0, 15000);
 }
-const tab = (p: any, label: RegExp) => p.locator('.tabbar button:visible, .rail-nav button:visible').filter({ has: p.locator('span', { hasText: label }) }).first();
+// phone: Cards, Chats, Ranks and Profile live in the More sheet, so open it when the tab isn't on the bar
+const tab = (p: any, label: RegExp) => ({
+  click: async () => {
+    const direct = p.locator('.tabbar button:visible, .rail-nav button:visible, .more-sheet .more-item:visible').filter({ has: p.locator('span, b', { hasText: label }) }).first();
+    if (await direct.count()) return direct.click();
+    await p.locator('.tabbar .tab-more').click();
+    return p.locator('.more-sheet .more-item').filter({ has: p.locator('b', { hasText: label }) }).first().click();
+  },
+});
 async function paperTrade(p: any, side: 'buy' | 'sell') {
   if (side === 'buy') {
     await tab(p, /^Home$/).click();

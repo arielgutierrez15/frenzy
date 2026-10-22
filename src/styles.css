@@ -389,13 +389,21 @@ textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
   .view-head, .coin-head { padding-right: 0; }
   h1 { font-size: 1.5rem; }
   .tabbar {
-    display: grid; grid-template-columns: repeat(7, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+    display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
     padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
     padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px));
     background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(12px); border-top: 1px solid var(--line);
   }
-  .tabbar button { background: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.7rem; font-weight: 700; color: var(--muted); padding: 6px 0; }
+  .tabbar button { background: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 0.7rem; font-weight: 700; color: var(--muted); padding: 4px 0 2px; min-height: 48px; }
+  .tabbar button .tab-ico { padding: 4px 14px; border-radius: 999px; transition: background 0.15s; }
   .tabbar button.on { color: var(--accent-fg); }
+  .tabbar button.on .tab-ico { background: var(--accent-soft); }
+  .tabbar .tab-center { color: var(--fg); }
+  .tab-center-ico { width: 52px; height: 52px; margin-top: -24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 5px var(--ink), 0 8px 22px var(--card-glow); }
+  .tabbar .tab-center.on { color: var(--accent-fg); }
+  .tabbar .tab-center.on .tab-center-ico { box-shadow: 0 0 0 5px var(--ink), 0 0 0 7px var(--accent-fg), 0 8px 26px var(--card-glow); }
+  .more-backdrop { z-index: 24; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  .more-sheet { border-radius: 22px 22px 0 0; padding-bottom: 14px; }
   .toasts { top: calc(66px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); width: auto; }
   .trade-bar { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
   .sheet-backdrop { place-items: end center; padding: 0; }
@@ -515,7 +523,6 @@ a.link { text-decoration: none; }
   .hero-stats > div:nth-child(3) { border-left: 0; }
   .hero-stats > div:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .changes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tabbar { grid-template-columns: repeat(7, 1fr); }
 }
 
 /* ---------- BAGZ chart (Lightweight Charts) ---------- */
@@ -662,7 +669,6 @@ img.avatar-you { border-radius: 50%; object-fit: cover; padding: 0; }
 .msg-form { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 10px 0; background: linear-gradient(transparent, var(--ink) 30%); }
 @media (max-width: 780px) {
   .msg-form { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
-  .tabbar button { font-size: 0.64rem; }
   .profile-head { gap: 12px; }
 }
 
@@ -680,8 +686,18 @@ img.avatar-you { border-radius: 50%; object-fit: cover; padding: 0; }
   .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .card-thumb { padding: 6px; }
   .card-thumb-meta { flex-wrap: wrap; gap: 2px 6px; }
-  .tabbar button { font-size: 0.6rem; }
-  .tabbar svg { width: 21px; height: 21px; }
 }
 @media (max-width: 380px) { .card-grid { grid-template-columns: minmax(0, 1fr); } }
 .sponsored-letter { width: 36px; height: 36px; display: grid; place-items: center; font-weight: 800; font-size: 0.8rem; background: var(--accent-soft); color: var(--accent-fg); }
+
+/* ---- More sheet (phone bottom bar) ---- */
+.more-group { display: flex; flex-direction: column; gap: 8px; }
+.more-group h3 { margin: 0; padding-left: 4px; }
+.more-list { display: flex; flex-direction: column; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.more-item { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 12px 14px; text-align: left; color: var(--fg); min-height: 56px; }
+.more-item:last-child { border-bottom: 0; }
+.more-item:active, .more-item:hover { background: var(--panel); }
+.more-item > svg { color: var(--muted); flex: none; }
+.more-item.on b { color: var(--accent-fg); }
+.more-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-fg); flex: none; }
+.more-dot { position: static; flex: none; }

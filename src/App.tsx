@@ -26,6 +26,27 @@ const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'wallet', label: 'Wallet', icon: 'wallet' },
 ];
 
+// phone bottom bar: four everyday tabs plus More; Radar sits raised in the middle
+const BAR: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'feed', label: 'Live', icon: 'feed' },
+  { id: 'radar', label: 'Radar', icon: 'radar' },
+  { id: 'wallet', label: 'Wallet', icon: 'wallet' },
+];
+// everything else lives in the More sheet, grouped
+const MORE: { title: string; items: { id: Tab; label: string; hint: string; icon: keyof typeof Icon }[] }[] = [
+  { title: 'Social', items: [
+    { id: 'chats', label: 'Chats', hint: 'Messages and friend requests', icon: 'chat' },
+    { id: 'ranks', label: 'Ranks', hint: 'Top traders on BAGZ and on-chain', icon: 'trophy' },
+    { id: 'me', label: 'Profile', hint: 'Your public page and settings', icon: 'user' },
+  ] },
+  { title: 'Your stuff', items: [
+    { id: 'cards', label: 'Cards', hint: 'Trading cards you saved', icon: 'card' },
+    { id: 'promote', label: 'BAGZ Boost', hint: 'Promote a token', icon: 'bolt' },
+  ] },
+];
+const IN_MORE = new Set<Tab>(MORE.flatMap((g) => g.items.map((i) => i.id)));
+
 function readHash(): Route {
   const h = (typeof location !== 'undefined' ? location.hash.slice(1) : '') as Tab;
   // promote and admin are pages without a tab-bar button
@@ -41,6 +62,7 @@ export default function App() {
   const [intent, setIntent] = useState<TradeIntent | null>(null);
   const [sharing, setSharing] = useState<CardSpec | null>(null);
   const [bellOpen, setBellOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -111,6 +133,15 @@ export default function App() {
     route.tab === 'cards' ? <CardsView /> : route.tab === 'ranks' ? <RanksView onchain={<LeadersView embedded />} /> : route.tab === 'chats' ? <ChatsView section={route.section} /> : route.tab === 'me' ? <ProfileView /> :
     route.tab === 'promote' ? <PromoteView /> : route.tab === 'admin' ? <AdminView /> : <LeadersView />;
   const sub = !!(route.coin || route.trader || route.user || route.chat);
+  const chatCount = counts.unread + counts.requests;
+  const barButton = (t: (typeof BAR)[number], on: boolean) => {
+    const Ico = Icon[t.icon];
+    return (
+      <button key={t.id} className={on ? 'on' : ''} onClick={() => { haptic.tap(); setMoreOpen(false); nav.go(t.id); }} aria-current={on}>
+        <span className="tab-ico"><Ico size={22} /></span><span>{t.label}</span>
+      </button>
+    );
+  };
   const showAside = !sub && (route.tab === 'feed' || route.tab === 'leaders');
 
   // first visit: a public profile comes before the app
@@ -171,16 +202,18 @@ export default function App() {
         {showAside && <Aside />}
 
         <nav className="tabbar" aria-label="Main">
-          {TABS.map((t) => {
-            const Ico = Icon[t.icon];
-            return (
-              <button key={t.id} className={route.tab === t.id ? 'on' : ''} onClick={() => { haptic.tap(); nav.go(t.id); }} aria-current={route.tab === t.id} aria-label={t.id === 'chats' && counts.unread + counts.requests > 0 ? `Chats, ${counts.unread + counts.requests} new` : undefined}>
-                <span className="tab-ico"><Ico size={22} />{t.id === 'chats' && counts.unread + counts.requests > 0 && <span className="dot-count num tab-dot">{counts.unread + counts.requests > 9 ? '9+' : counts.unread + counts.requests}</span>}</span>
-                <span>{t.label === 'Gem Radar' ? 'Radar' : t.label}</span>
-              </button>
-            );
-          })}
+          {BAR.slice(0, 2).map((t) => barButton(t, route.tab === t.id && !moreOpen))}
+          <button className={`tab-center${route.tab === 'radar' && !moreOpen ? ' on' : ''}`} onClick={() => { haptic.tap(); setMoreOpen(false); nav.go('radar'); }} aria-current={route.tab === 'radar'}>
+            <span className="tab-center-ico"><Icon.radar size={24} /></span>
+            <span>Radar</span>
+          </button>
+          {barButton(BAR[3], route.tab === 'wallet' && !moreOpen)}
+          <button className={`tab-more${moreOpen || IN_MORE.has(route.tab) ? ' on' : ''}`} onClick={() => { haptic.tap(); setMoreOpen((o) => !o); }} aria-expanded={moreOpen} aria-label={chatCount > 0 ? `More, ${chatCount} new chats` : 'More'}>
+            <span className="tab-ico"><Icon.more size={22} />{chatCount > 0 && <span className="dot-count num tab-dot">{chatCount > 9 ? '9+' : chatCount}</span>}</span>
+            <span>More</span>
+          </button>
         </nav>
+        {moreOpen && <MoreSheet current={route.tab} chatCount={chatCount} onClose={() => setMoreOpen(false)} />}
 
         {bellOpen && <AlertsPanel onClose={() => setBellOpen(false)} />}
         {intent && <TradeSheet key={intent.coinId + intent.side} intent={intent} onClose={() => setIntent(null)} />}
@@ -251,6 +284,36 @@ function Aside() {
         </ul>
       </div>
     </aside>
+  );
+}
+
+function MoreSheet({ current, chatCount, onClose }: { current: Tab; chatCount: number; onClose: () => void }) {
+  const nav = useNav();
+  useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  return (
+    <div className="sheet-backdrop more-backdrop" onClick={onClose}>
+      <div className="sheet more-sheet" role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-grip" />
+        {MORE.map((g) => (
+          <section key={g.title} className="more-group">
+            <h3 className="eyebrow">{g.title}</h3>
+            <div className="more-list">
+              {g.items.map((it) => {
+                const Ico = Icon[it.icon];
+                const badge = it.id === 'chats' && chatCount > 0;
+                return (
+                  <button key={it.id} className={`more-item${current === it.id ? ' on' : ''}`} onClick={() => { haptic.tap(); onClose(); nav.go(it.id); }}>
+                    <span className="more-ico"><Ico size={20} /></span>
+                    <span className="stack grow"><b>{it.label}</b><span className="muted small">{it.hint}</span></span>
+                    {badge ? <span className="dot-count num more-dot">{chatCount > 9 ? '9+' : chatCount}</span> : <Icon.chevron size={16} />}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
 

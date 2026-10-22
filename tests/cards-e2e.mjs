@@ -16,6 +16,12 @@ const HTML = readFileSync(resolve(root, 'docs/index.html'));
 const results = [], pageErrors = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Cards moved into the phone's More sheet
+async function openCards(p) {
+  if (await p.locator('.tabbar').isVisible()) { await p.locator('.tabbar .tab-more').click(); await p.locator('.more-sheet .more-item', { hasText: 'Cards' }).click(); }
+  else await p.locator('.rail-nav button', { hasText: 'Cards' }).click();
+}
+
 async function until(fn, ms = 20000, step = 150) { const t0 = Date.now(); for (;;) { try { const v = await fn(); if (v) return v; } catch { /* retry */ } if (Date.now() - t0 > ms) return false; await sleep(step); } }
 
 const srv = createServer((_q, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(HTML); });
@@ -84,7 +90,7 @@ const cardInfo = (p) => p.evaluate(async () => {
   await p.locator('.sheet.share button[aria-label=Close]').click();
 
   // Cards tab keeps the closed trade's card
-  await p.locator('.tabbar button', { hasText: /^Cards$/ }).click();
+  await openCards(p);
   check('Cards tab: the closed trade’s card was saved automatically', await until(async () => (await p.locator('.card-thumb').count()) === 1, 8000));
   check('Cards tab: phone layout fits with 7 tabs', await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   await p.screenshot({ path: `${SHOTS}/cards-tab-phone.png` });
@@ -107,7 +113,7 @@ const cardInfo = (p) => p.evaluate(async () => {
   check('wallet card can be saved to Cards', await until(async () => /In your Cards/.test(await p.locator('.sheet.share').innerText()), 4000));
   await p.locator('.sheet.share button[aria-label=Close]').click();
 
-  await p.locator('.tabbar button', { hasText: /^Cards$/ }).click();
+  await openCards(p);
   check('Cards tab now holds 2 cards; Wins/Losses filters work', await until(async () => (await p.locator('.card-thumb').count()) === 2, 5000));
   await p.locator('.seg button', { hasText: /^Wallet$/ }).click();
   check('…filter by Wallet shows the wallet card only', await until(async () => (await p.locator('.card-thumb').count()) === 1, 4000));
