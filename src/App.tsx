@@ -308,7 +308,7 @@ function MoreSheet({ current, chatCount, onClose }: { current: Tab; chatCount: n
                 return (
                   <button key={it.id} className={`more-item${current === it.id ? ' on' : ''}`} onClick={() => { haptic.tap(); onClose(); nav.go(it.id); }}>
                     <span className="more-ico"><Ico size={20} /></span>
-                    <span className="stack grow"><b>{it.label}</b><span className="muted small">{it.hint}</span></span>
+                    <span className="stack grow"><b>{it.label}</b></span>
                     {badge ? <span className="dot-count num more-dot">{chatCount > 9 ? '9+' : chatCount}</span> : <Icon.chevron size={16} />}
                   </button>
                 );
@@ -329,7 +329,6 @@ function AlertsPanel({ onClose }: { onClose: () => void }) {
     <div className="sheet-backdrop alerts-backdrop" onClick={onClose}>
       <div className="alerts" role="dialog" aria-label="Alerts" onClick={(e) => e.stopPropagation()}>
         <div className="row"><h2>Alerts</h2><span className="grow" /><button className="icon-btn" onClick={onClose} aria-label="Close alerts"><Icon.close /></button></div>
-        <p className="muted small">Swaps from wallets you follow, new coins scoring {st.settings.alertsMinScore}+, order fills, and rugs in coins you hold.</p>
         <ul className="alert-list">
           {st.notifs.length ? st.notifs.slice(0, 40).map((n) => {
             const c = n.coinId ? st.coins[n.coinId] : undefined;

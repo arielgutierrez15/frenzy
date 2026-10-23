@@ -203,7 +203,6 @@ export function LwChart(props: LwChartProps) {
       <div className="lw-tools">
         <button className="chip-btn" onClick={() => chart.current?.timeScale().fitContent()}>Fit</button>
         <button className="chip-btn" onClick={() => chart.current?.timeScale().scrollToRealTime()}>Latest</button>
-        <span className="muted small">Scroll or pinch to zoom · drag to pan</span>
       </div>
       {lib === 'loading' && <div className="lw-loading muted small">Loading chart library…</div>}
     </div>

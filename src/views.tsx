@@ -164,7 +164,6 @@ export function FeedView({ top }: { top?: React.ReactNode } = {}) {
       <header className="view-head">
         <div>
           <h1>Live</h1>
-          <p className="muted">Real swaps from real wallets, pulled from GeckoTerminal for the most active pools and the coins you hold. Follow a wallet to get alerts when it trades.</p>
         </div>
       </header>
       {top}
@@ -314,7 +313,6 @@ export function RadarView({ initial = 'radar' }: { initial?: DiscoverMode } = {}
       <header className="view-head">
         <div>
           <h1>{mode === 'radar' ? 'Gem Radar' : 'Blue chips'}</h1>
-          <p className="muted">{mode === 'radar' ? 'Coins found on DexScreener, Jupiter, GeckoTerminal and pump.fun, merged by contract address and scored 0–100 on the contract and holder checks those sites report. Unknown checks count as unknown, not as passes.' : 'Established memecoins with live prices from DexScreener.'}</p>
         </div>
       </header>
       {discover}
@@ -629,7 +627,6 @@ export function CoinView({ id }: { id: string }) {
                   </li>
                 ))}
               </ol>
-              <p className="muted small">Largest token accounts from Solana. One wallet can own several, and pools or exchanges show up here too.</p>
             </>
           )}
       </section>
@@ -741,7 +738,6 @@ export function WalletView() {
       <header className="view-head">
         <div>
           <h1>Wallet</h1>
-          <p className="muted">Paper money on live prices. You started with {usd(START_CASH, 0)}{st.user.deposits > START_CASH ? ` and added ${usd(st.user.deposits - START_CASH, 0)}` : ''}. Every buy, sell and order saves automatically in this browser; back it up to move it to another device.</p>
         </div>
         <button className="btn btn-soft" onClick={() => nav.share({ kind: 'wallet' })}><Icon.share size={16} /> Trading card</button>
       </header>
@@ -858,11 +854,10 @@ export function LeadersView({ embedded = false }: { embedded?: boolean }) {
   if (by === 'following') rows = rows.filter((w) => st.user.following.includes(w.address));
   return (
     <ViewWrap embedded={embedded}>
-      {embedded ? <p className="muted small">Real wallets seen swapping in the pools BAGZ watches, ranked by volume this session.</p> : (
+      {embedded ? null : (
       <header className="view-head">
         <div>
           <h1>Wallets</h1>
-          <p className="muted">Real wallets seen swapping in the pools BAGZ watches, ranked by volume this session. Your paper wallet is shown on its own.</p>
         </div>
       </header>)}
       <button className="you-row" onClick={() => nav.go('wallet')}>
@@ -988,7 +983,6 @@ export function HomeView() {
         <div className="stack">
           <span className="eyebrow">{st.snapshotAt ? 'Snapshot' : 'Live'} · Solana memecoin market</span>
           <h1>What’s moving right now</h1>
-          <p className="muted">Real prices from Jupiter, DexScreener, GeckoTerminal and pump.fun, refreshed every 20 seconds. Paper trades fill at those prices.</p>
         </div>
         <dl className="hero-stats">
           <div><dt>SOL</dt><dd className="num">{st.solPrice ? usd(st.solPrice) : '—'}</dd></div>
@@ -1002,7 +996,7 @@ export function HomeView() {
           <SponsoredStrip />
           {watch.length > 0 && (
             <section className="home-sec">
-              <div className="row"><h2>Your watchlist</h2><span className="grow" /><span className="muted small">Tap the bookmark on a coin to add it</span></div>
+              <div className="row"><h2>Your watchlist</h2></div>
               <div className="movers">{watch.map((c) => <MoverTile key={c.id} c={c} />)}</div>
             </section>
           )}
@@ -1014,7 +1008,6 @@ export function HomeView() {
           <div className="home-grid">
             <section className="panel">
               <h2>Trending now</h2>
-              <p className="muted small">Hot on Jupiter, DexScreener and GeckoTerminal, by 24h volume.</p>
               <ul className="coin-list">
                 {trending.map((c) => <CoinRow key={c.id} c={c} right={<span className="stack r"><b className="num small">{c.vol24 ? compact(c.vol24) : '—'}</b>{c.change.h24 !== undefined && <Change v={c.change.h24} />}</span>} />)}
                 {!trending.length && <li className="muted small">Nothing trending on 2+ sites yet.</li>}
@@ -1022,7 +1015,6 @@ export function HomeView() {
             </section>
             <section className="panel">
               <h2>Fresh launches</h2>
-              <p className="muted small">Under 24 hours old, newest first, with Gem Score.</p>
               <ul className="coin-list">
                 {fresh.map((c) => { const sc = scoreCoin(c); return <CoinRow key={c.id} c={c} right={<span className="row gap-s"><span className="muted small num">{ageOf(c)}</span><ScoreRing score={sc.score} size={34} /></span>} />; })}
                 {!fresh.length && <li className="muted small">No new launches loaded yet.</li>}

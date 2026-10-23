@@ -90,7 +90,7 @@ function SignupForm({ onLogin }: { onLogin: () => void }) {
   };
   return (
     <form className="stack gap" onSubmit={submit}>
-      <div><h1>Create your profile</h1><p className="muted">You need a public profile to trade on BAGZ, join the leaderboard and chat with friends.</p></div>
+      <div><h1>Create your profile</h1></div>
       <label className="field"><span>Username</span><input value={username} onChange={(e) => setU(e.target.value.replace(/\s/g, ''))} autoComplete="username" autoCapitalize="off" spellCheck={false} maxLength={20} placeholder="e.g. gorilla_gains" aria-invalid={!!username && !nameOk} /></label>
       {username && !nameOk && <span className="small warn">3–20 letters, numbers or _</span>}
       <label className="field"><span>Password</span><input type="password" value={password} onChange={(e) => setP(e.target.value)} autoComplete="new-password" minLength={8} maxLength={128} placeholder="8+ characters" /></label>
@@ -117,7 +117,7 @@ function LoginForm({ onSignup }: { onSignup: () => void }) {
   };
   return (
     <form className="stack gap" onSubmit={submit}>
-      <div><h1>Welcome back</h1><p className="muted">Sign in to your BAGZ profile.</p></div>
+      <div><h1>Welcome back</h1></div>
       <label className="field"><span>Username</span><input value={username} onChange={(e) => setU(e.target.value)} autoComplete="username" autoCapitalize="off" spellCheck={false} /></label>
       <label className="field"><span>Password</span><input type="password" value={password} onChange={(e) => setP(e.target.value)} autoComplete="current-password" /></label>
       {err && <p className="small warn" role="alert">{err}</p>}
@@ -145,7 +145,7 @@ function PictureStep() {
   };
   return (
     <div className="stack gap">
-      <div><h1>Add a profile picture</h1><p className="muted">Hi @{ses.user?.username}. Pick a picture for your public profile. It shows on the leaderboard, in chats and to friends.</p></div>
+      <div><h1>Add a profile picture</h1></div>
       <label className="pfp-pick">
         {preview ? <img src={preview} alt="Your new profile picture" className="pfp-preview" /> : <span className="pfp-empty"><Icon.plus size={28} /><span>Choose a photo</span></span>}
         <input type="file" accept="image/*" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} aria-label="Choose a profile picture" />
@@ -336,7 +336,7 @@ export function RanksView({ onchain }: { onchain: React.ReactNode }) {
   const val = (s: api.Stats) => (sort === 'win_rate' ? `${s.winRate.toFixed(0)}%` : sort === 'pnl' ? signedUsd(s.pnl) : pct(s.pnlPct, 2));
   return (
     <section className="view">
-      <header className="view-head"><div><h1>Leaderboard</h1><p className="muted">BAGZ traders ranked by their paper-trading results on live prices. Results are reported by the BAGZ app.</p></div></header>
+      <header className="view-head"><div><h1>Leaderboard</h1></div></header>
       <div className="seg" role="tablist" aria-label="Leaderboard">
         {([['global', 'Everyone'], ['friends', 'Friends'], ['onchain', 'On-chain wallets']] as const).map(([v, l]) => <button key={v} role="tab" aria-selected={scope === v} className={scope === v ? 'on' : ''} onClick={() => { haptic.tap(); setScope(v); }}>{l}</button>)}
       </div>
@@ -401,7 +401,7 @@ export function ChatsView({ section }: { section?: 'chats' | 'friends' }) {
   if (ses.status !== 'ready') return <section className="view"><header className="view-head"><div><h1>Chats</h1></div></header><div className="empty"><Badge className="brand-badge empty-badge" /><b>Chats are offline</b><p>Friends and group chats need the BAGZ server, which isn’t connected to this page yet.</p></div></section>;
   return (
     <section className="view">
-      <header className="view-head"><div><h1>{tab === 'chats' ? 'Chats' : 'Friends'}</h1><p className="muted">{tab === 'chats' ? 'Group chats with your BAGZ friends.' : 'Add friends to see their trades and start group chats.'}</p></div></header>
+      <header className="view-head"><div><h1>{tab === 'chats' ? 'Chats' : 'Friends'}</h1></div></header>
       <div className="seg" role="tablist" aria-label="Chats or friends">
         <button role="tab" aria-selected={tab === 'chats'} className={tab === 'chats' ? 'on' : ''} onClick={() => setTab('chats')}>Chats{c.unread ? ` · ${c.unread}` : ''}</button>
         <button role="tab" aria-selected={tab === 'friends'} className={tab === 'friends' ? 'on' : ''} onClick={() => setTab('friends')}>Friends{c.requests ? ` · ${c.requests} new` : ''}</button>

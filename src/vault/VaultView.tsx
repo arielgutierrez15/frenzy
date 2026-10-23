@@ -98,7 +98,6 @@ export function VaultView() {
         <div>
           <span className="eyebrow">BAGZ</span>
           <h1>The Vault</h1>
-          <p className="muted">Limited cards, 30 of each. Earn BAGZ Coins from paper-trading challenges and spend them here.</p>
         </div>
         {v && <Coin n={v.balance} big />}
       </header>
@@ -174,7 +173,6 @@ function Earn({ v, busy, onClaim }: { v: VaultState; busy: string | null; onClai
       )}
       <div className="panel">
         <div className="row"><h2 className="grow">Daily challenges</h2><span className="muted small">New in {hrs}h</span></div>
-        <p className="muted small">Progress counts your paper trades and theses from today. Claim each one once a day.</p>
         <ul className="bz-challenges">
           {v.challenges.map((c) => {
             const done = c.progress >= c.goal;
