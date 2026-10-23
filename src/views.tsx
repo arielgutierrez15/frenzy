@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChainTrade, Coin, Thesis } from './types';
 import { useStore, act, emit, getState, setFocus } from './store';
 import { useNav } from './nav';
@@ -15,7 +15,7 @@ function BannerImg({ src }: { src: string }) {
   return <div className="coin-banner"><img src={src} alt="" referrerPolicy="no-referrer" onError={() => setOk(false)} /></div>;
 }
 import { tradeLinks, walletLink } from './seed';
-import { ChartPanel } from './chart/ChartPanel';
+import { ChartPanel, type ChartInfo } from './chart/ChartPanel';
 import { HealthPanel } from './Health';
 import { LiveSwap } from './trading/LiveSwap';
 import { proxyBase } from './providers/config';
@@ -387,13 +387,42 @@ function MarketTable({ coins }: { coins: Coin[] }) {
 // ======================================================================
 // COIN PAGE
 // ======================================================================
+type Verdict = { label: string; tone: 'up' | 'warn' | 'down' | 'muted' };
+/** one plain-language rug verdict from what we actually know: a pulled pool, RugCheck's score, then the Gem Score checks */
+function verdictOf(c: Coin, rug?: { score?: number }): Verdict {
+  if (c.rugged) return { label: c.rugged === 'liquidity' ? 'Liquidity pulled' : 'Crashed 90%', tone: 'down' };
+  const s = scoreCoin(c);
+  if (rug?.score !== undefined) {
+    if (rug.score > 60) return { label: 'Rug likely', tone: 'down' };
+    if (rug.score > 20) return { label: 'Caution', tone: 'warn' };
+    return s.risk === 'high' ? { label: 'High risk', tone: 'down' } : { label: 'Looks OK', tone: 'up' };
+  }
+  if (s.known < 3) return { label: 'Not checked', tone: 'muted' };
+  return s.risk === 'high' ? { label: 'High risk', tone: 'down' } : s.risk === 'medium' ? { label: 'Caution', tone: 'warn' } : { label: 'Looks OK', tone: 'up' };
+}
+
+function HoldBar({ label, v, bad }: { label: string; v: number | undefined; bad: number }) {
+  if (v === undefined) return null;
+  const tone = v >= bad ? 'down' : 'up';
+  return (
+    <div className="cv-hold">
+      <span>{label}</span>
+      <span className="cv-hold-track"><span className={`cv-hold-fill fill-${tone}`} style={{ width: `${Math.max(1.5, Math.min(100, v))}%` }} /></span>
+      <b className={`num ${tone}`}>{v < 0.1 ? '<0.1' : v.toFixed(1)}%</b>
+    </div>
+  );
+}
+
 export function CoinView({ id }: { id: string }) {
   const st = useStore();
   const nav = useNav();
   const c = st.coins[id];
-  const [tab, setTab] = useState<'trades' | 'holders' | 'thesis'>('trades');
   const [draft, setDraft] = useState('');
   const [bull, setBull] = useState(true);
+  const [volWin, setVolWin] = useState<'1h' | '24h'>('24h');
+  const [allTrades, setAllTrades] = useState(false);
+  const [info, setInfo] = useState<ChartInfo | null>(null);
+  const holdersRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setFocus(id);
@@ -411,9 +440,9 @@ export function CoinView({ id }: { id: string }) {
   }, [id, c?.pairAddress]);
 
   useEffect(() => {
-    if (tab !== 'holders' || !c) return;
-    loadHolders(getState(), c).then(emit);
-  }, [tab, id]);
+    const coin = getState().coins[id];
+    if (coin) loadHolders(getState(), coin).then(emit);
+  }, [id]);
 
   if (!c) return <section className="view"><button className="back" onClick={nav.back}><Icon.back /> Back</button><Empty title="This coin is gone" body="It dropped off every source." /></section>;
   const d = detail[c.id] || {};
@@ -421,194 +450,253 @@ export function CoinView({ id }: { id: string }) {
   const orders = st.user.orders.filter((o) => o.coinId === c.id);
   const theses = st.user.theses.filter((t) => t.coinId === c.id);
   const s = scoreCoin(c);
-  const cats = categoriesOf(st, c).map((k) => CATEGORIES.find((x) => x.id === k)?.label).filter(Boolean);
+  const v = verdictOf(c, d.rug);
+  const isMajor = st.majors.includes(c.id);
+  const supply = c.price > 0 && c.mcap > 0 ? c.mcap / c.price : 0;
+  const saved = (st.user.watchlist || []).includes(c.id);
+  const twitter = c.links.find((l) => l.type === 'twitter')?.url;
   const copyAddr = () => {
     navigator.clipboard?.writeText(c.address).then(() => nav.toast('info', 'Address copied'), () => nav.toast('info', 'Copy blocked', c.address));
   };
+  const toggleSave = () => act((x) => { const w = x.user.watchlist || []; x.user.watchlist = w.includes(c.id) ? w.filter((y) => y !== c.id) : [c.id, ...w].slice(0, 100); });
+
+  // hero: market cap for memecoins, price for majors
+  const heroMcap = !isMajor && c.mcap > 0;
+  const peakMcap = info && supply ? info.high * supply : 0;
+  const peakX = info && info.first > 0 && info.high > info.first * 1.05 ? info.high / info.first : 0;
+
+  // activity: buy pressure from recent swaps (by $), or Jupiter's 24h counts when swaps aren't loaded
+  const trades = d.trades || [];
+  const buyUsd = trades.filter((t) => t.side === 'BUY').reduce((a, t) => a + t.usd, 0);
+  const allUsd = trades.reduce((a, t) => a + t.usd, 0);
+  const pressure = allUsd > 0 ? (buyUsd / allUsd) * 100 : c.buys24 !== undefined && (c.buys24 + (c.sells24 ?? 0)) > 0 ? (c.buys24 / (c.buys24 + (c.sells24 ?? 0))) * 100 : undefined;
+  const pressureSrc = allUsd > 0 ? `last ${trades.length} swaps` : '24h swaps';
+
+  // holders split: the first account on a pump.fun coin that hasn't migrated is the bonding curve, not a person
+  const curve = isPumpFun(c) && c.dexId === 'pumpfun' && !c.pumpComplete;
+  const hs = d.holders ? d.holders.slice(curve ? 1 : 0) : undefined;
+  const top3 = hs ? hs.slice(0, 3).reduce((a, h) => a + h.pct, 0) : 0;
+  const top10 = hs ? hs.slice(0, 10).reduce((a, h) => a + h.pct, 0) : 0;
+  const curvePct = curve && d.holders?.[0] ? d.holders[0].pct : 0;
+  const rest = Math.max(0, 100 - top10 - curvePct);
+
+  const vol = volWin === '1h' ? c.vol1h : c.vol24;
+  const volChg = volWin === '1h' ? c.change.h1 : c.change.h24;
+
   return (
-    <section className="view coin-view">
-      <button className="back" onClick={nav.back}><Icon.back /> Back</button>
-      {c.header && <BannerImg src={c.header} />}
-      <header className="coin-head">
-        <CoinBadge coin={c} size={72} />
-        <div className="coin-title">
-          <h1>${c.symbol} <span className="muted coin-name">{c.name}</span></h1>
-          <div className="row gap-s wrap small muted">
-            <span className="tag tag-plain">{c.chain}</span>
-            {(c.launchpad || c.dexId) && <span>{c.launchpad || c.dexId}</span>}
-            <button className="link num" onClick={copyAddr}>{short(c.address)} <Icon.copy size={12} /></button>
-          </div>
+    <section className="view coin-view cv">
+      <header className="cv-top coin-head">
+        <button className="back cv-back" onClick={nav.back} aria-label="Back"><Icon.back size={22} /></button>
+        <span className={`cv-badge cv-badge-${v.tone}`}>
+          <CoinBadge coin={c} size={54} />
+          <span className="cv-badge-dot" aria-hidden="true">{v.tone === 'up' ? <Icon.check size={11} /> : v.tone === 'muted' ? null : '!'}</span>
+        </span>
+        <div className="cv-id">
+          <div className="cv-id-1"><h1>${c.symbol}</h1><span className="tag tag-plain cv-chain">{c.chain === 'solana' ? 'SOL' : c.chain}</span>{c.createdAt && <span className="muted">{ago(c.createdAt)}</span>}</div>
+          <div className="cv-id-2 muted"><span className="cv-name">{c.name}</span><button className="bare cv-copy" onClick={copyAddr} aria-label="Copy contract address"><Icon.copy size={16} /></button></div>
         </div>
-        <div className="coin-price">
-          <b className="num big">{c.price > 0 ? fmtPrice(c.price) : '—'}</b>
-          <div className="row gap-s">{c.change.h24 !== undefined && <><Change v={c.change.h24} /><span className="muted small">24h</span></>}<span className="muted small">· updated {c.updatedAt ? ago(c.updatedAt) + ' ago' : 'never'}</span></div>
+        <div className="cv-actions">
+          {twitter && <a className="cv-act" href={twitter} target="_blank" rel="noopener noreferrer" aria-label="X / Twitter"><Icon.xlogo size={18} /></a>}
+          <button className={`cv-act${saved ? ' on' : ''}`} onClick={toggleSave} aria-pressed={saved} aria-label={saved ? 'Remove from watchlist' : 'Add to watchlist'}>{saved ? <Icon.bookmarkOn size={20} /> : <Icon.bookmark size={20} />}</button>
         </div>
       </header>
+
+      <div className="cv-hero">
+        <b className="num cv-big">{heroMcap ? usd(c.mcap, 0) : c.price > 0 ? fmtPrice(c.price) : '—'}</b>
+        <div className="cv-sub">
+          {c.change.h24 !== undefined && <><span className={`num ${c.change.h24 >= 0 ? 'up' : 'down'}`}>{pct(c.change.h24, Math.abs(c.change.h24) < 10 ? 1 : 0)}</span><span>24h</span></>}
+          {heroMcap && c.price > 0 && <span className="muted num cv-price">{fmtPrice(c.price)}</span>}
+        </div>
+        {peakX > 0 && <div className="cv-sub"><span className="num cv-peak">{peakX >= 10 ? peakX.toFixed(1) : peakX.toFixed(2)}x</span><span>peak{peakMcap ? <span className="muted num"> · {compact(peakMcap)}</span> : null}</span></div>}
+      </div>
       {c.rugged && <div className="banner banner-down"><Icon.warn /> {c.rugged === 'liquidity' ? 'Most of this pool’s liquidity was pulled while you were watching.' : 'Price fell more than 90% from its peak this session.'} Selling returns very little.</div>}
-      {cats.length > 0 && <div className="chips">{cats.map((l) => <span key={l} className="chip chip-cat">{l}</span>)}</div>}
-      <div className="panel">
-        <ChartPanel c={c} entry={pos ? pos.cost / pos.qty : undefined} isMajor={st.majors.includes(c.id)} />
-        <dl className="stats">
-          <div><dt>Market cap</dt><dd className="num">{c.mcap ? compact(c.mcap) : '—'}</dd></div>
-          <div><dt>Liquidity</dt><dd className="num">{c.liq ? compact(c.liq) : '—'}</dd></div>
-          <div><dt>24h volume</dt><dd className="num">{c.vol24 ? compact(c.vol24) : '—'}</dd></div>
-          <div><dt>Holders</dt><dd className="num">{c.holders !== undefined ? c.holders.toLocaleString() : '—'}</dd></div>
-          <div><dt>24h buys / sells</dt><dd className="num">{c.buys24 !== undefined ? `${compact(c.buys24, '')} / ${compact(c.sells24 ?? 0, '')}` : '—'}</dd></div>
-          <div><dt>Age</dt><dd className="num">{ageOf(c)}</dd></div>
-          <div><dt>1h volume</dt><dd className="num">{c.vol1h ? compact(c.vol1h) : '—'}</dd></div>
-          <div><dt>Top holders</dt><dd className="num">{c.audit.topHolders !== undefined ? `${c.audit.topHolders.toFixed(1)}%` : '—'}</dd></div>
-          <div><dt>Deployer</dt><dd className="num">{c.audit.devPct !== undefined ? `${c.audit.devPct.toFixed(2)}%` : '—'}</dd></div>
-          <div><dt>Organic score</dt><dd className="num">{c.organic ? `${c.organic.score.toFixed(0)} · ${c.organic.label}` : '—'}</dd></div>
-          <div><dt>Venue</dt><dd>{c.dexId || c.launchpad || '—'}</dd></div>
-          <div><dt>Price in SOL</dt><dd className="num">{st.solPrice && c.price > 0 ? `${(c.price / st.solPrice).toPrecision(4)} SOL` : '—'}</dd></div>
-        </dl>
-        <div className="changes">
-          {([['5m', c.change.m5], ['1h', c.change.h1], ['6h', c.change.h6], ['24h', c.change.h24]] as [string, number | undefined][]).map(([k, v]) => (
-            <div key={k}><span className="muted small">{k}</span>{v !== undefined ? <Change v={v} /> : <span className="muted">—</span>}</div>
-          ))}
-        </div>
+
+      <div className="cv-chart">
+        <ChartPanel c={c} entry={pos ? pos.cost / pos.qty : undefined} isMajor={isMajor} holders={c.holders} onHolders={() => holdersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} onInfo={setInfo} />
       </div>
 
-      <div className="coin-cols">
-        <div className="stack gap">
-          <div className="panel gem-panel">
-            <div className="row gap">
-              <ScoreRing score={s.score} size={64} />
-              <div className="stack">
-                <b>Gem Score {s.score}</b>
-                <span className="muted small">{s.reasons.length ? s.reasons.join(' · ') : 'No red flags in the checks we could read.'}</span>
-                <div className="row gap-s wrap"><RiskPill c={c} /><span className="muted small">{s.known} of {s.total} checks reported</span></div>
-              </div>
-            </div>
-            <SignalChips c={c} />
-            <SourceChips c={c} />
-            {c.organic && <p className="muted small">Jupiter organic score {c.organic.score.toFixed(0)} ({c.organic.label}).</p>}
-            {c.description && <p className="small">{c.description}</p>}
-          </div>
-          {c.chain === 'solana' && (
-            <div className="panel">
-              <div className="row gap-s"><h2>RugCheck report</h2><span className="grow" />{d.rug?.score !== undefined && <span className={`pill ${d.rug.score <= 20 ? 'pill-up' : d.rug.score <= 60 ? 'pill-warn' : 'pill-down'}`}>Risk {d.rug.score}/100</span>}</div>
-              {d.rug ? (
-                d.rug.risks.length ? (
-                  <ul className="risks">
-                    {d.rug.risks.slice(0, 8).map((r) => (
-                      <li key={r.name}><span className={`dot ${r.level === 'danger' ? 'dot-bad' : r.level === 'warn' ? 'dot-warn' : ''}`} /><span><b>{r.name}</b>{r.description ? <span className="muted small"> · {r.description}</span> : null}</span></li>
-                    ))}
-                  </ul>
-                ) : <p className="muted small">RugCheck found no risks for this token.</p>
-              ) : <p className="muted small">{d.rugError ? `RugCheck didn’t answer (${d.rugError}).` : 'Loading from rugcheck.xyz…'}</p>}
-              <a className="link small" href={`https://rugcheck.xyz/tokens/${c.address}`} target="_blank" rel="noopener noreferrer">Full report on RugCheck <Icon.external size={12} /></a>
-            </div>
-          )}
-          <LiveSwap c={c} />
-          {c.chain === 'solana' && <button className="link small promo-link" onClick={() => { setPromoteMint(c.address); nav.go('promote'); }}>Promote ${c.symbol} with BAGZ Boost</button>}
-          <div className="panel">
-            <h2>Trade or check it elsewhere</h2>
-            <div className="ext-links">
-              {tradeLinks(c.chain, c.address, c.pairAddress).map((l) => <a key={l.label} className="ext" href={l.url} target="_blank" rel="noopener noreferrer">{l.label} <Icon.external size={12} /></a>)}
-              {c.links.slice(0, 4).map((l) => <a key={l.url} className="ext ext-plain" href={l.url} target="_blank" rel="noopener noreferrer">{l.type} <Icon.external size={12} /></a>)}
-            </div>
-          </div>
-          <div className="panel">
-            <h2>Your paper position</h2>
-            {pos ? (
-              <>
-                <dl className="stats stats-3">
-                  <div><dt>Value</dt><dd className="num">{usd(pos.qty * c.price)}</dd></div>
-                  <div><dt>Avg entry</dt><dd className="num">{fmtPrice(pos.cost / pos.qty)}</dd></div>
-                  <div><dt>PnL</dt><dd className={`num ${pos.qty * c.price >= pos.cost ? 'up' : 'down'}`}>{signedUsd(pos.qty * c.price - pos.cost)} <small>{pct((pos.qty * c.price / pos.cost - 1) * 100)}</small></dd></div>
-                </dl>
-                <p className="muted small num">{fmtQty(pos.qty)} {c.symbol}</p>
-              </>
-            ) : <p className="muted">You don’t hold ${c.symbol}. Paper buys fill at the live price using your cash of {usd(st.user.cash)}.</p>}
-            {orders.length > 0 && (
-              <ul className="orders">
-                {orders.map((o) => (
-                  <li key={o.id}>
-                    <span className={`tag ${o.kind === 'sl' ? 'tag-down' : 'tag-up'}`}>{o.kind === 'sl' ? 'Stop' : o.kind === 'tp' ? 'Take profit' : 'Limit buy'}</span>
-                    <span className="num">{o.side === 'BUY' ? `${usd(o.usd || 0)} at ` : `${o.pct}% at `}{fmtPrice(o.trigger)}</span>
-                    <span className="grow" />
-                    <button className="link small" onClick={() => act((x) => cancelOrder(x, o.id))}>Cancel</button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+      <div className="cv-vol">
+        <label className="cv-vol-pick">
+          <select value={volWin} onChange={(e) => setVolWin(e.target.value as '1h' | '24h')} aria-label="Volume window">
+            <option value="1h">1 Hour Volume</option>
+            <option value="24h">24 Hour Volume</option>
+          </select>
+          <Icon.chevron size={14} className="cv-vol-chev" />
+        </label>
+        <span className="grow" />
+        <b className="num cv-vol-v">{vol ? compact(vol) : '—'}</b>
+        {volChg !== undefined && <span className={`num small ${volChg >= 0 ? 'up' : 'down'}`} title={`Price change over ${volWin}`}>{pct(volChg, 1)}</span>}
+      </div>
 
-        <div className="panel">
-          <Seg label="Coin activity" value={tab} onChange={setTab} options={[{ v: 'trades', l: 'Live trades' }, { v: 'holders', l: 'Holders' }, { v: 'thesis', l: `Your thesis · ${theses.length}` }]} />
-          {tab === 'trades' && (
-            !c.pairAddress ? <p className="muted">No pool found for this coin yet.</p> :
-            d.trades === undefined ? <p className="muted">Loading swaps from GeckoTerminal…</p> :
-            d.trades.length === 0 ? <p className="muted">{st.sources['gt-trades']?.ok === false ? `Couldn’t load swaps (${st.sources['gt-trades']?.error}).` : 'No swaps in this pool recently.'}</p> : (
-              <ul className="tape">
-                {d.trades.slice(0, 40).map((t) => (
+      {pos && (
+        <div className="panel cv-pos">
+          <div className="row"><h2>Your paper position</h2><span className="grow" /><button className="link small" onClick={() => nav.share({ kind: 'position', coinId: c.id })}>Share</button></div>
+          <dl className="stats stats-3">
+            <div><dt>Value</dt><dd className="num">{usd(pos.qty * c.price)}</dd></div>
+            <div><dt>Avg entry</dt><dd className="num">{fmtPrice(pos.cost / pos.qty)}</dd></div>
+            <div><dt>PnL</dt><dd className={`num ${pos.qty * c.price >= pos.cost ? 'up' : 'down'}`}>{signedUsd(pos.qty * c.price - pos.cost)} <small>{pct((pos.qty * c.price / pos.cost - 1) * 100)}</small></dd></div>
+          </dl>
+          <p className="muted small num">{fmtQty(pos.qty)} {c.symbol}</p>
+          {orders.length > 0 && (
+            <ul className="orders">
+              {orders.map((o) => (
+                <li key={o.id}>
+                  <span className={`tag ${o.kind === 'sl' ? 'tag-down' : 'tag-up'}`}>{o.kind === 'sl' ? 'Stop' : o.kind === 'tp' ? 'Take profit' : 'Limit buy'}</span>
+                  <span className="num">{o.side === 'BUY' ? `${usd(o.usd || 0)} at ` : `${o.pct}% at `}{fmtPrice(o.trigger)}</span>
+                  <span className="grow" />
+                  <button className="link small" onClick={() => act((x) => cancelOrder(x, o.id))}>Cancel</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      <section className="cv-sec">
+        <h2 className="cv-h">Metrics</h2>
+        <div className="cv-metrics">
+          <div><span className="muted">Rug check</span><b className={`cv-verdict t-${v.tone}`}>{v.tone !== 'up' && v.tone !== 'muted' && <Icon.warn size={22} />}{v.label}</b></div>
+          <div><span className="muted">Gem Score</span><b className="num cv-m">{s.score}<small className="muted"> /100</small></b></div>
+          <div><span className="muted">Liquidity</span><b className="num cv-m">{c.liq ? compact(c.liq) : '—'}</b></div>
+          <div><span className="muted">Holders</span><b className="num cv-m">{c.holders !== undefined ? c.holders.toLocaleString() : '—'}</b></div>
+          <div><span className="muted">Mint / freeze</span><b className="cv-m cv-m-s">{c.audit.mintRevoked === undefined ? '—' : <><span className={c.audit.mintRevoked ? 'up' : 'down'}>{c.audit.mintRevoked ? 'Revoked' : 'Mint on'}</span> / <span className={c.audit.freezeRevoked ? 'up' : 'down'}>{c.audit.freezeRevoked ? 'Revoked' : 'Freeze on'}</span></>}</b></div>
+          <div><span className="muted">Organic score</span><b className="num cv-m">{c.organic ? c.organic.score.toFixed(0) : '—'}{c.organic && <small className="muted"> {c.organic.label}</small>}</b></div>
+        </div>
+        {(c.audit.devPct !== undefined || c.audit.topHolders !== undefined || hs) && (
+          <div className="cv-holds">
+            <div className="row muted small"><span>Wallets hold</span><span className="grow" /><span>% of supply</span></div>
+            <HoldBar label="Dev" v={c.audit.devPct} bad={5} />
+            <HoldBar label="Top 10" v={c.audit.topHolders ?? (hs ? top10 : undefined)} bad={30} />
+            <HoldBar label="Largest" v={hs?.[0]?.pct} bad={5} />
+          </div>
+        )}
+        {s.reasons.length > 0 && <p className="muted small">{s.reasons.join(' · ')}</p>}
+      </section>
+
+      <section className="cv-sec">
+        <h2 className="cv-h">Activity</h2>
+        {pressure !== undefined && (
+          <div className="cv-pressure">
+            <div className="row small"><span className="muted">Buy pressure <span className="cv-src">· {pressureSrc}</span></span><span className="grow" /><b className="up num">{pressure.toFixed(0)}%</b><span className="muted">&nbsp;buying</span></div>
+            <div className="cv-pbar"><span className="cv-pbar-b" style={{ flex: Math.max(0.5, pressure) }} /><span className="cv-pbar-s" style={{ flex: Math.max(0.5, 100 - pressure) }} /></div>
+          </div>
+        )}
+        {!c.pairAddress ? <p className="muted">No pool found for this coin yet.</p> :
+          d.trades === undefined ? <p className="muted">Loading swaps from GeckoTerminal…</p> :
+          d.trades.length === 0 ? <p className="muted">{st.sources['gt-trades']?.ok === false ? `Couldn’t load swaps (${st.sources['gt-trades']?.error}).` : 'No swaps in this pool recently.'}</p> : (
+            <>
+              <ul className="tape cv-trades">
+                {d.trades.slice(0, allTrades ? 40 : 8).map((t) => (
                   <li key={t.id + t.wallet}>
-                    <span className={`tag ${t.side === 'BUY' ? 'tag-up' : 'tag-down'}`}>{t.side === 'BUY' ? 'Buy' : 'Sell'}</span>
-                    <button className="link num" onClick={() => nav.openTrader(t.wallet)}>{short(t.wallet)}</button>
+                    <b className={`num cv-t-usd ${t.side === 'BUY' ? 'up' : 'down'}`} aria-label={t.side === 'BUY' ? 'Buy' : 'Sell'}>{t.usd >= 1000 ? compact(t.usd) : usd(t.usd)}</b>
+                    {supply > 0 && <span className="muted num cv-t-mc">at {compact(t.price * supply, '')} MC</span>}
                     <span className="grow" />
-                    <span className="num">{compact(t.usd)}</span>
-                    <span className="num muted hide-s">{fmtPrice(t.price)}</span>
-                    <span className="muted small">{ago(t.t)}</span>
+                    <button className="link num cv-t-w" onClick={() => nav.openTrader(t.wallet)}>{short(t.wallet)}</button>
+                    <span className="muted num cv-t-ago">{ago(t.t)}</span>
                   </li>
                 ))}
               </ul>
-            )
+              {d.trades.length > 8 && <button className="link small" onClick={() => setAllTrades((x) => !x)}>{allTrades ? 'Show fewer' : `Show ${Math.min(40, d.trades.length)} swaps`}</button>}
+            </>
           )}
-          {tab === 'holders' && (
-            <div className="stack gap">
-              <dl className="stats stats-3">
-                <div><dt>Holders</dt><dd className="num">{c.holders !== undefined ? c.holders.toLocaleString() : '—'}</dd></div>
-                <div><dt>Top holders</dt><dd className="num">{c.audit.topHolders !== undefined ? `${c.audit.topHolders.toFixed(1)}%` : '—'}</dd></div>
-                <div><dt>Deployer</dt><dd className="num">{c.audit.devPct !== undefined ? `${c.audit.devPct.toFixed(2)}%` : '—'}</dd></div>
-              </dl>
-              {c.chain !== 'solana' ? <p className="muted small">Wallet-level holders are only loaded for Solana coins. Use the explorer link for this chain.</p> :
-                d.holders ? (
-                  <div className="table-wrap">
-                    <table className="mkt holders">
-                      <thead><tr><th>Token account</th><th className="r">Supply</th><th className="r">Value</th></tr></thead>
-                      <tbody>
-                        {d.holders.map((h, i) => (
-                          <tr key={h.address}>
-                            <td className="num">{i + 1}. <a className="link" href={`https://solscan.io/account/${h.address}`} target="_blank" rel="noopener noreferrer">{short(h.address)}</a>{i === 0 && isPumpFun(c) && c.dexId === 'pumpfun' ? <span className="tag tag-plain">bonding curve</span> : null}</td>
-                            <td className="r num">{h.pct < 0.01 ? '<0.01' : h.pct.toFixed(2)}%</td>
-                            <td className="r num">{compact((h.pct / 100) * c.mcap)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : <p className="muted small">{d.holdersError ? `Couldn’t load the holder list: ${d.holdersError}` : 'Loading the 20 largest token accounts from Solana…'}</p>}
-            </div>
-          )}
-          {tab === 'thesis' && (
-            <div className="stack gap">
-              <form className="composer" onSubmit={(e) => {
-                e.preventDefault();
-                const text = draft.trim();
-                if (!text) return;
-                act((x) => { x.user.theses.unshift({ id: uid('th'), t: Date.now(), coinId: c.id, bull, text, price: c.price, mcap: c.mcap }); });
-                setDraft('');
-                nav.toast('info', 'Thesis saved', 'It tracks the price from now on, so you can see if you were right.');
-              }}>
-                <div className="row gap-s">
-                  <button type="button" className={`chip-btn ${bull ? 'on-up' : ''}`} onClick={() => setBull(true)}>Bullish</button>
-                  <button type="button" className={`chip-btn ${!bull ? 'on-down' : ''}`} onClick={() => setBull(false)}>Bearish</button>
-                </div>
-                <label htmlFor={`thesis-${c.id}`} className="sr-only">Your thesis</label>
-                <textarea id={`thesis-${c.id}`} rows={2} maxLength={240} placeholder={`Why are you ${bull ? 'in' : 'out of'} $${c.symbol}?`} value={draft} onChange={(e) => setDraft(e.target.value)} />
-                <div className="row"><span className="muted small num">{draft.length}/240</span><span className="grow" /><button className="btn btn-soft btn-sm" disabled={!draft.trim()}>Save thesis</button></div>
-              </form>
-              {theses.length ? theses.map((th) => <ThesisCard key={th.id} th={th} />) : <p className="muted small">Only you see your theses. Nobody else uses this app yet, so there are no other people’s posts to show.</p>}
-            </div>
-          )}
-        </div>
-      </div>
+      </section>
 
-      <div className="trade-bar">
-        <button className="btn btn-down-solid" disabled={!pos} onClick={() => nav.trade({ coinId: c.id, side: 'SELL' })}>Sell</button>
-        <button className="btn btn-accent" disabled={!!c.rugged || !(c.price > 0)} onClick={() => nav.trade({ coinId: c.id, side: 'BUY', usd: 100 })}>Buy ${c.symbol}</button>
+      <section className="cv-sec" ref={holdersRef}>
+        <h2 className="cv-h">Holders</h2>
+        {c.chain !== 'solana' ? <p className="muted small">Wallet-level holders are only loaded for Solana coins.</p> :
+          !hs ? <p className="muted small">{d.holdersError ? `Couldn’t load the holder list: ${d.holdersError}` : 'Loading the largest token accounts from Solana…'}</p> : (
+            <>
+              <div className="cv-hbar" aria-hidden="true">
+                <span className="cv-h1" style={{ flex: Math.max(0.6, top3) }} />
+                <span className="cv-h2" style={{ flex: Math.max(0.6, top10 - top3) }} />
+                {curvePct > 0 && <span className="cv-hc" style={{ flex: curvePct }} />}
+                <span className="cv-h3" style={{ flex: Math.max(0.6, rest) }} />
+              </div>
+              <div className="cv-hlegend">
+                <div><span className="muted"><i className="dot-h1" />Top 3</span><b className="num">{top3.toFixed(0)}%</b></div>
+                <div><span className="muted"><i className="dot-h2" />4–10</span><b className="num">{(top10 - top3).toFixed(0)}%</b></div>
+                {curvePct > 0 && <div><span className="muted"><i className="dot-hc" />Curve</span><b className="num">{curvePct.toFixed(0)}%</b></div>}
+                <div><span className="muted"><i className="dot-h3" />Rest</span><b className="num">{rest.toFixed(0)}%</b></div>
+              </div>
+              <ol className="cv-hlist">
+                {hs.slice(0, 10).map((h, i) => (
+                  <li key={h.address}>
+                    <span className="cv-rank num">{i + 1}</span>
+                    <a className="num cv-haddr" href={`https://solscan.io/account/${h.address}`} target="_blank" rel="noopener noreferrer">{short(h.address)}</a>
+                    <span className="grow" />
+                    <span className="muted num small hide-xs">{compact((h.pct / 100) * c.mcap)}</span>
+                    <b className="num">{h.pct < 0.01 ? '<0.01' : h.pct.toFixed(2)}%</b>
+                  </li>
+                ))}
+              </ol>
+              <p className="muted small">Largest token accounts from Solana. One wallet can own several, and pools or exchanges show up here too.</p>
+            </>
+          )}
+      </section>
+
+      {c.chain === 'solana' && (
+        <section className="cv-sec">
+          <div className="row gap-s"><h2 className="cv-h">RugCheck</h2><span className="grow" />{d.rug?.score !== undefined && <span className={`pill ${d.rug.score <= 20 ? 'pill-up' : d.rug.score <= 60 ? 'pill-warn' : 'pill-down'}`}>Risk {d.rug.score}/100</span>}</div>
+          {d.rug ? (
+            d.rug.risks.length ? (
+              <ul className="risks">
+                {d.rug.risks.slice(0, 8).map((r) => (
+                  <li key={r.name}><span className={`dot ${r.level === 'danger' ? 'dot-bad' : r.level === 'warn' ? 'dot-warn' : ''}`} /><span><b>{r.name}</b>{r.description ? <span className="muted small"> · {r.description}</span> : null}</span></li>
+                ))}
+              </ul>
+            ) : <p className="muted small">RugCheck found no risks for this token.</p>
+          ) : <p className="muted small">{d.rugError ? `RugCheck didn’t answer (${d.rugError}).` : 'Loading from rugcheck.xyz…'}</p>}
+          <a className="link small" href={`https://rugcheck.xyz/tokens/${c.address}`} target="_blank" rel="noopener noreferrer">Full report on RugCheck <Icon.external size={12} /></a>
+        </section>
+      )}
+
+      {(c.description || c.links.length > 0) && (
+        <section className="cv-sec">
+          <h2 className="cv-h">About</h2>
+          {c.description && <p className="small">{c.description}</p>}
+          <SignalChips c={c} />
+          <SourceChips c={c} />
+        </section>
+      )}
+
+      <LiveSwap c={c} />
+
+      <section className="cv-sec">
+        <h2 className="cv-h">Your thesis{theses.length ? ` · ${theses.length}` : ''}</h2>
+        <form className="composer" onSubmit={(e) => {
+          e.preventDefault();
+          const text = draft.trim();
+          if (!text) return;
+          act((x) => { x.user.theses.unshift({ id: uid('th'), t: Date.now(), coinId: c.id, bull, text, price: c.price, mcap: c.mcap }); });
+          setDraft('');
+          nav.toast('info', 'Thesis saved', 'It tracks the price from now on, so you can see if you were right.');
+        }}>
+          <div className="row gap-s">
+            <button type="button" className={`chip-btn ${bull ? 'on-up' : ''}`} onClick={() => setBull(true)}>Bullish</button>
+            <button type="button" className={`chip-btn ${!bull ? 'on-down' : ''}`} onClick={() => setBull(false)}>Bearish</button>
+          </div>
+          <label htmlFor={`thesis-${c.id}`} className="sr-only">Your thesis</label>
+          <textarea id={`thesis-${c.id}`} rows={2} maxLength={240} placeholder={`Why are you ${bull ? 'in' : 'out of'} $${c.symbol}?`} value={draft} onChange={(e) => setDraft(e.target.value)} />
+          <div className="row"><span className="muted small num">{draft.length}/240</span><span className="grow" /><button className="btn btn-soft btn-sm" disabled={!draft.trim()}>Save thesis</button></div>
+        </form>
+        {theses.map((th) => <ThesisCard key={th.id} th={th} />)}
+      </section>
+
+      <section className="cv-sec">
+        <h2 className="cv-h">Trade or check it elsewhere</h2>
+        <div className="ext-links">
+          {tradeLinks(c.chain, c.address, c.pairAddress).map((l) => <a key={l.label} className="ext" href={l.url} target="_blank" rel="noopener noreferrer">{l.label} <Icon.external size={12} /></a>)}
+          {c.links.slice(0, 4).map((l) => <a key={l.url} className="ext ext-plain" href={l.url} target="_blank" rel="noopener noreferrer">{l.type} <Icon.external size={12} /></a>)}
+        </div>
+        <div className="row gap-s wrap small muted"><button className="link num" onClick={copyAddr}>{short(c.address)} <Icon.copy size={12} /></button>{(c.launchpad || c.dexId) && <span>· {c.launchpad || c.dexId}</span>}</div>
+        {c.chain === 'solana' && <button className="link small promo-link" onClick={() => { setPromoteMint(c.address); nav.go('promote'); }}>Promote ${c.symbol} with BAGZ Boost</button>}
+      </section>
+
+      <div className={`trade-bar cv-bar${pos ? ' cv-bar-2' : ''}${v.tone === 'down' ? ' cv-bar-risk' : ''}`}>
+        {pos && <button className="btn btn-down-solid" onClick={() => nav.trade({ coinId: c.id, side: 'SELL' })}>Sell</button>}
+        <button className="btn btn-accent cv-buy" disabled={!!c.rugged || !(c.price > 0)} onClick={() => nav.trade({ coinId: c.id, side: 'BUY', usd: 100 })}>
+          {v.tone === 'down' && <span className="cv-buy-warn">{v.label}</span>}<Icon.chevUp size={18} /> Buy
+        </button>
       </div>
     </section>
   );
@@ -893,6 +981,7 @@ export function HomeView() {
   const srcs = Object.values(st.sources);
   const okSrc = srcs.filter((x) => x.ok).length;
   const tape = st.tape.slice(0, 6);
+  const watch = (st.user.watchlist || []).map((id) => st.coins[id]).filter((c): c is Coin => !!c);
   return (
     <section className="view home">
       <header className="home-hero">
@@ -911,6 +1000,12 @@ export function HomeView() {
       <DataGate>
         <div className="stack gap">
           <SponsoredStrip />
+          {watch.length > 0 && (
+            <section className="home-sec">
+              <div className="row"><h2>Your watchlist</h2><span className="grow" /><span className="muted small">Tap the bookmark on a coin to add it</span></div>
+              <div className="movers">{watch.map((c) => <MoverTile key={c.id} c={c} />)}</div>
+            </section>
+          )}
           <section className="home-sec">
             <div className="row"><h2>Biggest movers · 1h</h2><span className="grow" /><button className="link small" onClick={() => nav.go('radar')}>Gem Radar</button></div>
             {movers.length ? <div className="movers">{movers.map((c) => <MoverTile key={c.id} c={c} />)}</div> : <p className="muted small">Movers appear once prices load.</p>}

@@ -783,6 +783,7 @@ export function priorityIds(st: State, focus?: string): string[] {
   if (focus) ids.add(focus);
   Object.keys(st.user.positions).forEach((id) => ids.add(id));
   st.user.orders.forEach((o) => ids.add(o.coinId));
+  (st.user.watchlist || []).forEach((id) => { if (st.coins[id]) ids.add(id); });
   const rest = Object.values(st.coins).filter((c) => !ids.has(c.id)).sort((a, b) => b.firstSeen - a.firstSeen || b.sources.length - a.sources.length);
   for (const c of rest) { if (ids.size >= 150) break; ids.add(c.id); }
   return [...ids];
@@ -800,7 +801,7 @@ export async function refreshLiveTape(st: State, focus?: string) {
 function prune(st: State) {
   const coins = Object.values(st.coins);
   if (coins.length <= 450) return;
-  const keep = new Set<string>([...st.majors, ...Object.keys(st.user.positions), ...st.user.orders.map((o) => o.coinId), ...st.user.trades.slice(0, 100).map((t) => t.coinId), ...st.user.theses.map((t) => t.coinId)]);
+  const keep = new Set<string>([...st.majors, ...Object.keys(st.user.positions), ...st.user.orders.map((o) => o.coinId), ...st.user.trades.slice(0, 100).map((t) => t.coinId), ...st.user.theses.map((t) => t.coinId), ...(st.user.watchlist || [])]);
   coins.filter((c) => !keep.has(c.id)).sort((a, b) => a.firstSeen - b.firstSeen).slice(0, coins.length - 400).forEach((c) => { delete st.coins[c.id]; delete detail[c.id]; });
   const live = new Set(Object.keys(st.coins));
   st.tape = st.tape.filter((t) => live.has(t.coinId));

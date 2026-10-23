@@ -167,6 +167,8 @@ export interface UserState {
   trades: Trade[];
   orders: Order[];
   following: string[]; // wallet addresses
+  /** coin ids saved with the bookmark on the coin page */
+  watchlist?: string[];
   theses: Thesis[];
   /** trading cards kept in the Cards tab (numbers frozen when the card was made) */
   cards?: SavedCard[];

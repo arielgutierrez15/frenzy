@@ -94,7 +94,7 @@ const LAUNCH = `#tgWebAppData=${INIT}&tgWebAppVersion=8.0&tgWebAppPlatform=ios`;
   check('Telegram mode is on', await p.evaluate(() => document.documentElement.classList.contains('tg')));
   const opened = await until(async () => new RegExp('\\$' + SYM.replace(/[$^]/g, '')).test(await p.locator('.coin-head').innerText()), 40000);
   check(`start parameter opens the shared coin ($${SYM})`, opened);
-  check('in-page Back is hidden (Telegram’s header button replaces it)', !(await p.locator('.view > .back').isVisible()));
+  check('in-page Back is hidden (Telegram’s header button replaces it)', !(await p.locator('.view > .back, .cv-back').isVisible()));
   check('Telegram back button is shown on the coin page', await until(async () => p.evaluate(() => window.__tg.back.visible && window.__tg.back.handlers.length > 0), 5000));
   await p.screenshot({ path: `${SHOTS}/tg-coin.png` });
 
@@ -147,7 +147,7 @@ const LAUNCH = `#tgWebAppData=${INIT}&tgWebAppVersion=8.0&tgWebAppPlatform=ios`;
   const c = await calls(p);
   await until(async () => (await p.locator('.coin-row').count()) > 3, 40000);
   await p.locator('.coin-row').first().click();
-  check('older Telegram versions keep the in-page Back button', await until(async () => p.locator('.view > .back').isVisible(), 5000));
+  check('older Telegram versions keep the in-page Back button', await until(async () => p.locator('.view > .back, .cv-back').isVisible(), 5000));
   check('older Telegram versions: version-gated calls are skipped, nothing breaks', !c.some((x) => ['setHeaderColor', 'disableVerticalSwipes', 'setBottomBarColor'].includes(x[0])) && c.some((x) => x[0] === 'expand'));
   await ctx.close();
 }
