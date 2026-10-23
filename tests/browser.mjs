@@ -106,6 +106,7 @@ const volSeries = async (p) => { const c = await charts(p); return c[c.length - 
   check('volume histogram drawn with the same candles', vs?.n === ms.n);
   check('high/low markers placed', ms.markers === 2, String(ms.markers));
 
+  await p.locator('.chart-gear').click();
   const rangeBtns = await p.locator('.chart-panel .seg').nth(0).locator('button').allInnerTexts();
   check('range buttons are 1H 4H 24H 7D 30D', rangeBtns.join(',') === '1H,4H,24H,7D,30D', rangeBtns.join(','));
   const ivOf = async () => (await p.locator('.chart-panel .seg').nth(1).locator('button').allInnerTexts()).join(',');
@@ -258,6 +259,7 @@ const volSeries = async (p) => { const c = await charts(p); return c[c.length - 
   const box = await p.locator('[data-testid=lw-box]').boundingBox();
   check('phone coin page: no horizontal scroll', w[0] <= w[1], JSON.stringify(w));
   check('phone: chart fits the screen width', box && box.width <= 390 && box.width > 300, JSON.stringify(box));
+  await p.locator('.chart-gear').click();
   const seg = await p.locator('.chart-panel .toolbar').boundingBox();
   check('phone: chart controls stay inside the viewport', seg && seg.x >= 0 && seg.x + seg.width <= 391, JSON.stringify(seg));
   await p.screenshot({ path: `${SHOTS}/09-coin-phone.png`, fullPage: true });

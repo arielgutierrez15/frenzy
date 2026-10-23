@@ -9,6 +9,7 @@ import {
   type RangeId, type IntervalId, type ChartType, type CandleSet,
 } from './data';
 import { ago, price as fmtPrice } from '../format';
+import { Icon } from '../ui';
 import { short } from '../engine';
 
 const LS = { range: 'bagz.range', type: 'bagz.chartType', iv: 'bagz.intervals', axis: 'bagz.axis' };
@@ -16,10 +17,21 @@ const read = (k: string): string | null => { try { return localStorage.getItem(k
 const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } };
 const readIv = (): Record<string, string> => { try { return JSON.parse(read(LS.iv) || '{}'); } catch { return {}; } };
 
-export function ChartPanel({ c, entry, isMajor }: { c: Coin; entry?: number; isMajor: boolean }) {
+/** quick picks under the chart: each sets a candle interval and a range that shows a useful number of candles */
+const PILLS: { id: string; label: string; range: RangeId; iv: IntervalId }[] = [
+  { id: 'live', label: 'Live', range: '1H', iv: '1m' },
+  { id: '1m', label: '1m', range: '4H', iv: '1m' },
+  { id: '5m', label: '5m', range: '24H', iv: '5m' },
+  { id: '15m', label: '15m', range: '7D', iv: '15m' },
+  { id: '1h', label: '1h', range: '30D', iv: '1h' },
+];
+
+export interface ChartInfo { high: number; low: number; first: number }
+
+export function ChartPanel({ c, entry, isMajor, holders, onHolders, onInfo, height = 400 }: { c: Coin; entry?: number; isMajor: boolean; holders?: number; onHolders?: () => void; onInfo?: (i: ChartInfo | null) => void; height?: number }) {
   useStore();
   const [range, setRange] = useState<RangeId>(() => (RANGES.some((r) => r.id === read(LS.range)) ? (read(LS.range) as RangeId) : '24H'));
-  const [ivs, setIvs] = useState<Record<string, string>>(readIv);
+  const [ivs, setIvs] = useState<Record<string, string>>(() => ({ '24H': '5m', ...readIv() }));
   const [type, setType] = useState<ChartType>(() => (['candles', 'line', 'area'].includes(read(LS.type) || '') ? (read(LS.type) as ChartType) : 'candles'));
   const [axis, setAxis] = useState<'price' | 'mcap'>(() => { const a = read(LS.axis); return a === 'price' || a === 'mcap' ? a : isMajor ? 'price' : 'mcap'; });
   const rangeSpec = rangeOf(range);
@@ -58,6 +70,8 @@ export function ChartPanel({ c, entry, isMajor }: { c: Coin; entry?: number; isM
   const pickRange = (r: RangeId) => { setRange(r); write(LS.range, r); };
   const pickIv = (v: IntervalId) => { const n = { ...ivs, [range]: v }; setIvs(n); write(LS.iv, JSON.stringify(n)); };
   const pickType = (t: ChartType) => { setType(t); write(LS.type, t); };
+  const pickPill = (p: (typeof PILLS)[number]) => { setRange(p.range); write(LS.range, p.range); const n = { ...ivs, [p.range]: p.iv }; setIvs(n); write(LS.iv, JSON.stringify(n)); };
+  const [settings, setSettings] = useState(false);
   const pickAxis = (a: 'price' | 'mcap') => { setAxis(a); write(LS.axis, a); };
 
   const set = res.key === key && key ? res.set : undefined;
@@ -67,19 +81,19 @@ export function ChartPanel({ c, entry, isMajor }: { c: Coin; entry?: number; isM
   const lastClose = set ? set.candles[set.candles.length - 1].c : 0;
   // only compare when the candles and the quote were fetched close together, so ordinary movement isn't reported as a mismatch
   const gap = set && tick && Math.abs(set.fetchedAt - c.updatedAt) <= 25_000 ? priceGap(lastClose, c.price) : 0;
+  useEffect(() => {
+    if (!onInfo) return;
+    if (!set || !set.candles.length) { onInfo(null); return; }
+    let high = 0, low = Infinity;
+    for (const k of set.candles) { if (k.h > high) high = k.h; if (k.l > 0 && k.l < low) low = k.l; }
+    onInfo({ high, low: low === Infinity ? 0 : low, first: set.candles[0].o });
+  }, [set]);
   const sampled = useMemo(() => c.spark.map((p) => ({ t: p.t, o: p.p, h: p.p, l: p.p, c: p.p, v: 0 })), [c.spark.length, c.updatedAt]);
 
   return (
     <div className="chart-panel">
-      <div className="toolbar">
-        <Seg label="Range" value={range} onChange={pickRange} options={RANGES.map((r) => ({ v: r.id, l: r.label }))} />
-        <Seg label="Candle interval" value={interval} onChange={pickIv} options={rangeSpec.intervals.map((i) => ({ v: i, l: INTERVALS[i].label }))} />
-        <Seg label="Chart type" value={type} onChange={pickType} options={[{ v: 'candles', l: 'Candles' }, { v: 'line', l: 'Line' }, { v: 'area', l: 'Area' }]} />
-        <Seg label="Chart axis" value={axis === 'mcap' && supply > 0 ? 'mcap' : 'price'} onChange={pickAxis} options={[{ v: 'price', l: 'Price' }, { v: 'mcap', l: 'MCap' }]} />
-      </div>
-
       {set ? (
-        <LwChart candles={set.candles} type={type} intervalMs={iv.ms} dataKey={key} tick={tick} entry={entry} supply={supply} showMcap={axis === 'mcap' && supply > 0} />
+        <LwChart candles={set.candles} type={type} intervalMs={iv.ms} dataKey={key} tick={tick} entry={entry} supply={supply} showMcap={axis === 'mcap' && supply > 0} height={height} />
       ) : err ? (
         <div className="chart-empty">
           <p className="muted">Candles unavailable: {err}</p>
@@ -88,7 +102,29 @@ export function ChartPanel({ c, entry, isMajor }: { c: Coin; entry?: number; isM
           <button className="chip-btn" onClick={() => fetchNow(true)}>Retry</button>
         </div>
       ) : (
-        <div className="chart-empty muted">{busy || key ? `Loading ${range} candles…` : 'Looking for this coin’s trading pool…'}</div>
+        <div className="chart-empty muted" style={{ minHeight: height }}>{busy || key ? `Loading ${range} candles…` : 'Looking for this coin’s trading pool…'}</div>
+      )}
+
+      <div className="chart-pills">
+        <div className="chart-pills-l" role="tablist" aria-label="Timeframe">
+          {PILLS.map((p) => {
+            const on = range === p.range && interval === p.iv;
+            return <button key={p.id} role="tab" aria-selected={on} className={`cpill${on ? ' on' : ''}${p.id === 'live' ? ' cpill-live' : ''}`} onClick={() => pickPill(p)}>{p.id === 'live' && <span className="live-dot" />}{p.label}</button>;
+          })}
+          {!PILLS.some((p) => range === p.range && interval === p.iv) && <button className="cpill on" onClick={() => setSettings(true)}>{range} · {iv.label}</button>}
+        </div>
+        <span className="grow" />
+        {holders !== undefined && <button className="cpill cpill-plain num" onClick={onHolders}>Holders ({holders.toLocaleString()})</button>}
+        <button className={`icon-btn icon-btn-sm chart-gear${settings ? ' on' : ''}`} aria-label="Chart settings" aria-expanded={settings} onClick={() => setSettings((x) => !x)}><Icon.tune size={18} /></button>
+      </div>
+
+      {settings && (
+        <div className="toolbar chart-settings">
+          <Seg label="Range" value={range} onChange={pickRange} options={RANGES.map((r) => ({ v: r.id, l: r.label }))} />
+          <Seg label="Candle interval" value={interval} onChange={pickIv} options={rangeSpec.intervals.map((i) => ({ v: i, l: INTERVALS[i].label }))} />
+          <Seg label="Chart type" value={type} onChange={pickType} options={[{ v: 'candles', l: 'Candles' }, { v: 'line', l: 'Line' }, { v: 'area', l: 'Area' }]} />
+          <Seg label="Chart axis" value={axis === 'mcap' && supply > 0 ? 'mcap' : 'price'} onChange={pickAxis} options={[{ v: 'price', l: 'Price' }, { v: 'mcap', l: 'MCap' }]} />
+        </div>
       )}
 
       <div className="chart-meta small muted">

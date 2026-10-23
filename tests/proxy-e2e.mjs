@@ -111,6 +111,7 @@ const mainSeries = (p) => p.evaluate(() => { const c = window.__lwc.charts.filte
   await p.locator('.coin-row').first().click();
   check('chart draws candles from Worker data', await until(async () => (await mainSeries(p))?.n > 10), JSON.stringify(await mainSeries(p)));
   const combos = { '1H': ['1m', '5m'], '4H': ['1m', '5m', '15m'], '24H': ['5m', '15m', '1h'], '7D': ['15m', '1h', '4h'], '30D': ['1h', '4h', '1d'] };
+  await p.locator('.chart-gear').click();
   for (const [r, ivs] of Object.entries(combos)) {
     await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: new RegExp('^' + r + '$') }).click();
     for (const iv of ivs) {
@@ -146,7 +147,7 @@ const mainSeries = (p) => p.evaluate(() => { const c = window.__lwc.charts.filte
   // (the deliberate 503 from /v1/swap/prepare above is a configuration refusal, not a contract violation)
   const bad = w.log.filter((l) => l.method !== 'OPTIONS' && l.status >= 400);
   check('contract: no app request was rejected by the Worker (no 400/403/405)', bad.filter((l) => [400, 403, 405].includes(l.status)).length === 0, bad.map((l) => l.status + ' ' + l.path).join(' | '));
-  check('every Worker route the app used is an allowlisted provider or the BAGZ API', w.log.every((l) => /^\/(p\/(jup|gt|ds|pump|rug|rpc)\/|health|v1\/(config|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)), [...new Set(w.log.map((l) => l.path.split('?')[0]))].filter((x) => !/^\/p\//.test(x)).join(' '));
+  check('every Worker route the app used is an allowlisted provider or the BAGZ API', w.log.every((l) => /^\/(p\/(jup|gt|ds|pump|rug|rpc)(\/|\?|$)|health|v1\/(config|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)), w.log.filter((l) => !/^\/(p\/(jup|gt|ds|pump|rug|rpc)(\/|\?|$)|health|v1\/(config|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)).map((l) => l.path).join(' '));
 
   // secrets
   check('secret key reached the upstream providers (injected server-side)', w.upstream.some((u) => u.key === SECRET));
@@ -230,6 +231,7 @@ const mainSeries = (p) => p.evaluate(() => { const c = window.__lwc.charts.filte
   check('phone: coin page has no horizontal scroll', await noScroll());
   const boxW = await p.locator('[data-testid=lw-box]').evaluate((e) => e.getBoundingClientRect().width);
   check('phone: chart fits the screen width', boxW > 300 && boxW <= 390, String(boxW));
+  await p.locator('.chart-gear').tap();
   const heights = await p.locator('.chart-panel .seg button').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
   check('phone: chart control buttons are at least 32px tall (tappable)', heights.length > 10 && Math.min(...heights) >= 32, `min ${Math.min(...heights)}`);
   await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^7D$/ }).tap();
