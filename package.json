@@ -6,7 +6,8 @@
   "description": "BAGZ: live memecoin charts, Gem Radar and paper trading.",
   "scripts": {
     "dev": "vite --port 3000 --host 0.0.0.0",
-    "build": "vite build",
+    "build": "node build.mjs && node -e \"require('fs').cpSync('docs', 'dist', { recursive: true })\"",
+    "build:vite": "vite build",
     "build:single": "node build.mjs",
     "preview": "vite preview",
     "check": "tsc --noEmit -p tsconfig.check.json",
