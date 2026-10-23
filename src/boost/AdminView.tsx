@@ -57,7 +57,7 @@ export function AdminView() {
 
   return (
     <section className="view admin">
-      <header className="view-head"><div><h1>Boost review</h1><p className="muted">Approve or reject paid listings. Only wallets on the server’s admin list can sign in; nothing here moves funds.</p></div></header>
+      <header className="view-head"><div><h1>Boost review</h1></div></header>
       <div className="panel">
         {testCopy ? <p className="test-copy-note small"><b>Test copy:</b> every account can review here so you can try the flow. In the real app only wallets on the admin list can.</p> : <WalletBar compact />}
         {session ? <p className="small up">Signed in as {session.wallet.startsWith('@') ? session.wallet : short(session.wallet)}{testCopy ? '' : ` until ${new Date(session.expiresAt).toLocaleTimeString()}`}.</p>

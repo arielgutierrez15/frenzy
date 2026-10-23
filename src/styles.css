@@ -874,9 +874,9 @@ img.avatar-you { border-radius: 50%; object-fit: cover; padding: 0; }
 .cv-hlist li:last-child { border-bottom: 0; }
 .cv-rank { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--panel-2); color: var(--muted); font-size: 0.85rem; flex: none; }
 .cv-haddr { color: var(--fg); text-decoration: none; }
-.cv-bar { grid-template-columns: 1fr; border-radius: 22px; padding: 8px; }
+.cv-bar { grid-template-columns: 1fr; border-radius: 18px; padding: 6px; max-width: 420px; width: 100%; margin: 0 auto; }
 .cv-bar.cv-bar-2 { grid-template-columns: 1fr 2fr; }
-.cv-bar .btn { border-radius: 16px; padding: 16px; font-size: 1.15rem; font-weight: 800; }
+.cv-bar .btn { border-radius: 13px; padding: 10px 14px; font-size: 1rem; font-weight: 800; }
 .cv-buy { background: var(--up); color: var(--ink); border-color: transparent; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .cv-buy:hover { background: color-mix(in srgb, var(--up) 88%, #fff); }
 .cv-bar-risk .cv-buy { background: color-mix(in srgb, var(--down) 18%, var(--panel)); color: var(--accent-fg); border: 1px solid color-mix(in srgb, var(--down) 30%, transparent); }

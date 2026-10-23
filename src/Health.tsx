@@ -33,7 +33,6 @@ export function HealthPanel() {
     <div className="panel" id="data-health">
       <div className="row gap-s wrap"><h2>Data sources</h2><span className="grow" />
         <span className={`pill ${proxy ? 'pill-up' : 'pill-warn'}`}>{proxy ? 'via BAGZ proxy' : 'direct from your browser'}</span></div>
-      <p className="muted small">{proxy ? 'Requests go through the BAGZ proxy, which holds API keys and caches at the edge.' : 'No BAGZ proxy is configured, so each site is called directly. Some providers (pump.fun, rate-limited APIs) may refuse browsers. See the README to deploy the proxy.'}</p>
       {!health.length && <p className="muted small">Waiting for the first responses…</p>}
       {[...byProv.entries()].map(([pid, rows]) => {
         const p = PROVIDERS[pid];

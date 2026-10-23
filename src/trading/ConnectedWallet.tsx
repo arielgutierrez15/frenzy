@@ -37,7 +37,6 @@ export function ConnectedWalletPanel() {
   return (
     <div className="panel">
       <div className="row gap-s wrap"><h2>Your Solana wallet</h2><span className="pill pill-unofficial">Real funds</span><span className="grow" />{bal && <button className="link small" onClick={() => setN((x) => x + 1)}>Refresh</button>}</div>
-      <p className="muted small">Separate from the paper wallet. Connect to see your verified on-chain balances; BAGZ only ever sees your public address.</p>
       <WalletBar compact />
       {err && <p className="small warn">{err}</p>}
       {bal && (

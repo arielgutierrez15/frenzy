@@ -60,7 +60,7 @@ export function CardsView() {
   return (
     <section className="view">
       <header className="view-head">
-        <div><h1>Cards</h1><p className="muted">Every trading card you make lands here. Closing a paper trade makes one automatically; save wallet and position cards from their share sheet.</p></div>
+        <div><h1>Cards</h1></div>
       </header>
       {all.length > 0 && (
         <dl className="stats stats-4 cards-stats">
@@ -84,7 +84,6 @@ export function CardsView() {
           {!all.length && <div className="row gap-s wrap"><button className="btn btn-accent" onClick={() => nav.go('radar')}>Find a coin</button><button className="btn btn-ghost" onClick={() => nav.share({ kind: 'wallet' })}>Make a wallet card</button></div>}
         </div>
       )}
-      <p className="muted small">Cards are saved with your paper wallet on this device (included in Wallet → Back up).</p>
     </section>
   );
 }
