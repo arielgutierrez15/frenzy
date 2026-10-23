@@ -17,6 +17,7 @@ import { Onboarding, ProfileView, RanksView, ChatsView, ChatRoom, UserAvatar, us
 import { AdminView } from './boost/AdminView';
 import navEmblem from './assets/bagz-nav-emblem.png';
 import { inTelegram, syncBackButton, startMint, haptic } from './telegram';
+import { SearchBar } from './search/SearchBar';
 
 const TABS: { id: Tab; label: string; icon: keyof typeof Icon }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -187,10 +188,12 @@ export default function App() {
             <Icon.bell size={20} />{unread > 0 && <span className="dot-count num">{unread > 9 ? '9+' : unread}</span>}
           </button>
           {ses.user && <button className="bare topbar-me" onClick={() => nav.go('me')} aria-label="Your profile"><UserAvatar u={ses.user} size={34} /></button>}
+          <div className="topbar-search"><SearchBar /></div>
         </header>
 
         <main className="main" ref={mainRef}>
           <div className="desk-bell">
+            <div className="desk-search"><SearchBar /></div>
             <SourceBadge />
             <button className="icon-btn bell" aria-label={`Alerts, ${unread} unread`} onClick={() => setBellOpen((b) => !b)}>
               <Icon.bell size={20} />{unread > 0 && <span className="dot-count num">{unread > 9 ? '9+' : unread}</span>}

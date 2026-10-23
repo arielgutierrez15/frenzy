@@ -43,6 +43,7 @@ node build.mjs         # writes docs/index.html (GitHub Pages) and dist/bagz.htm
 npm run test:browser   # app in Chromium, mocked providers (needs Playwright + Chromium)
 npm run test:e2e       # app ⇄ real Worker code over HTTP with real CORS, mocked providers
 npm run test:app       # new screens (swap, Promote, admin, Sponsored) against the real Worker + D1, fake chain
+npm run test:search    # top search bar: coins by $symbol/contract address, @users, wallets (phone + desktop)
 ```
 
 Without `npm install`, `node build.mjs` still works: the page then loads Lightweight Charts v4.2.0 from jsDelivr at runtime (or from `docs/vendor/` if you run `npm run vendor:charts`).
