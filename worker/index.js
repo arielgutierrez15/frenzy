@@ -191,7 +191,11 @@ export async function handle(request, env, ctx, deps = {}) {
     const ip = request.headers.get('cf-connecting-ip') || 'anon';
     let limited = false;
     if (env.RATE_LIMITER) { try { limited = !(await env.RATE_LIMITER.limit({ key: ip })).success; } catch { /* fall through */ } }
-    if (!limited) limited = over(`ip:${ip}`, num(env.RATE_PER_MIN, 240), 60_000, now) || (request.method === 'POST' && over(`post:${ip}`, num(env.RATE_POST_PER_MIN, 20), 60_000, now));
+    // wallet saves have their own POST budget, so trading quickly never uses up the budget for chats, friends and sign-in
+    const walletSave = request.method === 'POST' && url.pathname === '/v1/me/wallet';
+    if (!limited) limited = over(`ip:${ip}`, num(env.RATE_PER_MIN, 240), 60_000, now) || (request.method === 'POST' && (walletSave
+      ? over(`wpost:${ip}`, num(env.RATE_WALLET_PER_MIN, 60), 60_000, now)
+      : over(`post:${ip}`, num(env.RATE_POST_PER_MIN, 20), 60_000, now)));
     if (limited) return json({ error: 'Too many requests' }, 429, { ...base, 'retry-after': '30', 'x-bagz-limit': 'client' });
     if (request.method !== 'GET' && request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, base);
     try {

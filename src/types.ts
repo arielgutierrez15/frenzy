@@ -173,6 +173,8 @@ export interface UserState {
   /** trading cards kept in the Cards tab (numbers frozen when the card was made) */
   cards?: SavedCard[];
   equity: { t: number; v: number }[];
+  /** changes when the wallet is reset or restored from a backup, so a sync never mixes the old and new wallet */
+  epoch?: string;
 }
 
 export interface State {

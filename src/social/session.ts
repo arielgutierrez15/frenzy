@@ -18,6 +18,7 @@ import { tgCloud } from '../telegram';
 import { getState, switchWallet } from '../store';
 import { userStats } from '../engine';
 import * as api from './api';
+import { startWalletSync, stopWalletSync, flushWalletSync } from '../sync/walletSync';
 import type { Me } from './api';
 
 export type Status = 'checking' | 'unavailable' | 'signed-out' | 'incomplete' | 'ready';
@@ -56,6 +57,8 @@ export async function initSession() {
 }
 export function signedIn(token: string, user: Me) {
   switchWallet(user.id);
+  // the paper wallet follows the account: download it now and keep it in sync on every device
+  startWalletSync(user.id, token);
   writeLocal(token);
   tgCloud.set(KEY, token);
   set({ token, user, status: user.complete ? 'ready' : 'incomplete' });
@@ -64,11 +67,12 @@ export function signedIn(token: string, user: Me) {
 export function updateMe(user: Me) { set({ user, status: user.complete ? 'ready' : 'incomplete' }); if (user.complete) startSync(); }
 function forget() { writeLocal(null); tgCloud.remove(KEY); }
 export async function logout() {
+  try { await flushWalletSync(); } catch { /* the next sign-in merges anything left here */ }
   try { await api.logoutApi(); } catch { /* already gone */ }
-  forget(); stopSync(); switchWallet(null);
+  forget(); stopSync(); stopWalletSync(); switchWallet(null);
   set({ status: 'signed-out', token: null, user: null });
 }
-export function accountDeleted() { forget(); stopSync(); switchWallet(null); set({ status: 'signed-out', token: null, user: null }); }
+export function accountDeleted() { forget(); stopSync(); stopWalletSync(); switchWallet(null); set({ status: 'signed-out', token: null, user: null }); }
 
 // ---- keeping the public profile in sync with the paper wallet ---------------------------------------------------------
 let timer: ReturnType<typeof setInterval> | null = null;

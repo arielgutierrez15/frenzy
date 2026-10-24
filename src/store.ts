@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { State } from './types';
-import { load, save, freshState, clearSave, setWalletOwner, discover, refreshPrices, refreshLiveTape, armAlerts, loadSnapshot, leaveSnapshot, setBlockedMints, pruneBlocked, PRICE_REFRESH_MS, DISCOVERY_REFRESH_MS, TAPE_REFRESH_MS } from './engine';
+import { load, save as saveToDevice, mergeFromOtherTab, walletStorageKey, freshState, clearSave, setWalletOwner, discover, refreshPrices, refreshLiveTape, armAlerts, loadSnapshot, leaveSnapshot, setBlockedMints, pruneBlocked, PRICE_REFRESH_MS, DISCOVERY_REFRESH_MS, TAPE_REFRESH_MS } from './engine';
 import { getBlocklist } from './trading/api';
 
 const anySourceOk = () => Object.values(state.sources).some((s) => s.ok);
@@ -9,6 +9,13 @@ let state: State = load();
 let version = 0;
 const listeners = new Set<() => void>();
 let focusCoin: string | undefined;
+
+/** account sync (src/sync/walletSync.ts) listens here for wallet changes to upload */
+let walletChanged: (() => void) | null = null;
+export function setWalletChangeListener(f: (() => void) | null) { walletChanged = f; }
+/** save the paper wallet on this device (merging in other tabs' saves first) and tell the account sync */
+function save(st: State) { saveToDevice(st); walletChanged?.(); }
+export function saveNow() { saveToDevice(state); }
 
 export function getState() { return state; }
 
@@ -89,6 +96,11 @@ export function start() {
   setInterval(() => guarded('tape', () => refreshLiveTape(state, focusCoin)), TAPE_REFRESH_MS);
   // relative times ("12s ago") keep moving between data refreshes
   setInterval(emit, 5000);
-  window.addEventListener('beforeunload', () => save(state));
+  window.addEventListener('beforeunload', () => saveToDevice(state));
+  // another tab of this browser saved: take its trades in right away instead of overwriting them later
+  window.addEventListener('storage', (e) => {
+    if (e.key !== walletStorageKey()) return;
+    if (mergeFromOtherTab(state)) { emit(); walletChanged?.(); }
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(state); });
 }

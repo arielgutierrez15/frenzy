@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChainTrade, Coin, Thesis } from './types';
 import { useStore, act, emit, getState, setFocus } from './store';
 import { useNav } from './nav';
@@ -6,7 +6,7 @@ import { Avatar, Change, CoinBadge, Icon, PriceChart, ScoreRing, Spark, EquityCh
 import { ago, compact, pct, price as fmtPrice, qty as fmtQty, usd, signedUsd } from './format';
 import {
   change24, userStats, fumbles, cancelOrder, uid, scoreCoin, categoriesOf, CATEGORIES, SOURCE_SHORT, START_CASH,
-  detail, loadTrades, loadHolders, loadDetails, topWallets, short, isPumpFun, exportWallet, importWallet,
+  detail, loadTrades, loadHolders, loadDetails, topWallets, short, isPumpFun, exportWallet, importWallet, resetWallet,
 } from './engine';
 
 function BannerImg({ src }: { src: string }) {
@@ -24,6 +24,8 @@ import { Badge } from './brand';
 import { FriendsFeed } from './social/ui';
 import { setPromoteMint } from './boost/PromoteView';
 import { ConnectedWalletPanel } from './trading/ConnectedWallet';
+import { onSyncStatus, syncStatus } from './sync/walletSync';
+import { useSession } from './social/session';
 
 // ======================================================================
 // shared bits
@@ -724,6 +726,19 @@ function ActivityList({ limit = 80 }: { limit?: number }) {
   );
 }
 
+/** where the paper wallet is saved: on the account (every device) or only on this device */
+function SyncNote() {
+  const sync = useSyncExternalStore(onSyncStatus, syncStatus, syncStatus);
+  const sess = useSession();
+  if (sess.status !== 'ready' && sess.status !== 'incomplete') return <span className="small muted sync-note">Saved on this device only. Sign in to keep it on every device.</span>;
+  const label = sync === 'synced' ? 'Saved to your account · same on every device'
+    : sync === 'syncing' ? 'Saving to your account…'
+    : sync === 'offline' ? 'Offline · saved here, will sync when you’re back online'
+    : sync === 'error' ? 'Couldn’t sync right now · saved here, retrying'
+    : 'Saved to your account';
+  return <span className={`small sync-note ${sync === 'synced' || sync === 'syncing' ? 'muted' : 'warn'}`}>{label}</span>;
+}
+
 export function WalletView() {
   const st = useStore();
   const nav = useNav();
@@ -747,6 +762,7 @@ export function WalletView() {
             <span className="eyebrow">Total value</span>
             <b className="num huge">{usd(s.equity)}</b>
             <span className={`num ${s.pnl >= 0 ? 'up' : 'down'}`}>{signedUsd(s.pnl)} · {pct(s.pnlPct, 2)} all time</span>
+            <SyncNote />
           </div>
           <dl className="stats stats-4">
             <div><dt>Cash</dt><dd className="num">{usd(st.user.cash)}</dd></div>
@@ -780,7 +796,7 @@ export function WalletView() {
           ) : (
             <span className="confirm">Reset to {usd(START_CASH, 0)} and clear all trades?
               <button className="btn btn-down-solid btn-sm" onClick={() => {
-                act((x) => { x.user.cash = START_CASH; x.user.deposits = START_CASH; x.user.positions = {}; x.user.trades = []; x.user.orders = []; x.user.theses = []; x.user.equity = [{ t: Date.now(), v: START_CASH }]; });
+                act((x) => resetWallet(x));
                 setConfirmReset(false); nav.toast('info', 'Wallet reset');
               }}>Reset</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setConfirmReset(false)}>Keep</button>
