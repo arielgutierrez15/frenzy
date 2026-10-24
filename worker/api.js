@@ -23,6 +23,7 @@ import {
 } from './solana.js';
 import { social, currentUser } from './social.js';
 import { vault } from './vault.js';
+import { adminOverview, adminUsers, adminLog } from './admin.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -721,6 +722,9 @@ export async function api(request, env, deps) {
   if (route('POST', /^\/admin\/challenge$/)) return adminChallenge(ctx, body);
   if (route('POST', /^\/admin\/session$/)) return adminSession(ctx, body);
   if (route('GET', /^\/admin\/promotions$/)) { await requireAdmin(ctx, request); return adminList(ctx, url.searchParams.get('status') || 'pending_review'); }
+  if (route('GET', /^\/admin\/overview$/)) { await requireAdmin(ctx, request); return adminOverview(ctx, needDb(ctx), url.searchParams.get('days')); }
+  if (route('GET', /^\/admin\/users$/)) { await requireAdmin(ctx, request); return adminUsers(ctx, needDb(ctx), url); }
+  if (route('GET', /^\/admin\/log$/)) { await requireAdmin(ctx, request); return adminLog(ctx, needDb(ctx), url); }
   if ((p = route('POST', /^\/admin\/promotions\/([A-Za-z0-9_-]{16,64})\/(approve|reject)$/))) { const who = await requireAdmin(ctx, request); return adminDecide(ctx, who, p[1], p[2], body); }
   throw new ApiError(404, 'Unknown route');
 }

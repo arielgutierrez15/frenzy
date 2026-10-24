@@ -176,7 +176,7 @@ export function PromoteView() {
           <>
             <p className="test-copy-note small"><b>Test copy:</b> no wallet or money. A test payment marks the order as paid so you can try review, approval and the Sponsored row. Real payments use USDC once the Worker is deployed.</p>
             <button className="btn btn-accent" disabled={!token || !chosen || !!stage} onClick={testPay}>{stage || (!token ? 'Check a token first' : `Place order with a test payment ($${chosen?.usdc ?? ''})`)}</button>
-            <button className="link small" onClick={() => nav.go('admin')}>Open the review desk</button>
+            <button className="link small" onClick={() => { try { sessionStorage.setItem('bagz-admin-section', 'boost'); } catch { /* storage off */ } nav.go('admin'); }}>Open the review desk</button>
           </>
         ) : <>
         <WalletBar compact />

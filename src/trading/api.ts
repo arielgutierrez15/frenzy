@@ -97,5 +97,27 @@ export const adminSession = (wallet: string, nonce: string, signature: string) =
 export const adminPromotions = (token: string, status: string) => apiCall<{ promotions: AdminPromotion[] }>(`/admin/promotions?status=${encodeURIComponent(status)}`, { token });
 export const adminDecide = (token: string, id: string, action: 'approve' | 'reject', b: { startsAt?: number; note?: string }) => apiCall<{ order: Order }>(`/admin/promotions/${id}/${action}`, { body: b, token });
 
+export interface Daily { day: string; n: number }
+export interface AdminOverview {
+  generatedAt: number; days: number;
+  users: { total: number; new24h: number; new7d: number; new30d: number; withAvatar: number; withBio: number; dau: number; wau: number; mau: number; liveSessions: number };
+  signups: Daily[]; activeDaily: Daily[]; tradesDaily: Daily[]; swapsDaily: Daily[];
+  paper: { trades: number; trades24h: number; traders: number; buys: number; sells: number; volumeUsd: number; volume24hUsd: number; theses: number; reporting: number; avgPnlPct: number | null; inProfit: number; avgWinRate: number | null };
+  topTokens: { symbol: string; mint: string; trades: number; volume: number }[];
+  swaps: { byStatus: Record<string, number>; total: number; fees: { mint: string; symbol: string | null; raw: string; amount: number | null }[] };
+  boost: { byStatus: Record<string, number>; paidOrders: number; revenueUsdc: number; revenue30dUsdc: number; impressions: number; clicks: number };
+  vault: { coinsIssued: number; coinsSpent: number; cardsMinted: number; collectors: number };
+  social: { friendships: number; pendingRequests: number; chats: number; messages: number; messages24h: number };
+}
+export interface AdminUser { id: string; username: string; createdAt: number; lastSeen: number | null; hasAvatar: boolean; avatarVer: number; trades: number; equity: number | null; pnlPct: number | null; winRate: number | null; coins: number; cards: number; friends: number }
+export interface AdminEvent {
+  type: 'signup' | 'trade' | 'thesis' | 'swap' | 'boost' | 'payment' | 'card' | 'coins'; t: number; text: string;
+  user?: string | null; wallet?: string; side?: string; symbol?: string | null; mint?: string; usd?: number; price?: number; pnl?: number | null; bull?: boolean;
+  status?: string; signature?: string | null; inAmount?: number | null; fee?: number | null; feeSymbol?: string | null; usdc?: number | null; delta?: number; error?: string | null;
+}
+export const adminOverview = (token: string, days: number) => apiCall<AdminOverview>(`/admin/overview?days=${days}`, { token });
+export const adminUsers = (token: string, o: { q?: string; sort?: string; offset?: number }) => apiCall<{ total: number; offset: number; users: AdminUser[] }>(`/admin/users?${new URLSearchParams({ q: o.q || '', sort: o.sort || 'new', offset: String(o.offset || 0) })}`, { token });
+export const adminLog = (token: string, type: string, before?: number) => apiCall<{ type: string; events: AdminEvent[]; next: number | null }>(`/admin/log?type=${encodeURIComponent(type)}${before ? `&before=${before}` : ''}`, { token });
+
 /** random idempotency key (letters/digits, 24 chars) */
 export const newKey = () => { const a = crypto.getRandomValues(new Uint8Array(18)); return Array.from(a, (b) => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_'[b & 63]).join(''); };
