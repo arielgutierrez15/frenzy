@@ -13,6 +13,7 @@
  */
 import { isPaused } from './controls.js';
 import { ApiError, database } from './api.js';
+import { getWallet, putWallet, deleteWallet } from './wallet.js';
 
 const DAY = 86_400_000;
 const SESSION_MS = 30 * DAY;
@@ -161,6 +162,7 @@ async function deleteAccount(ctx, u, b) {
   const row = await one(d, 'SELECT pass_hash, pass_salt, pass_iter FROM users WHERE id = ?', u.id);
   if (typeof b.password !== 'string' || !sameStr(await pbkdf2(b.password, row.pass_salt, row.pass_iter), row.pass_hash)) throw new ApiError(401, 'Wrong password');
   const chats = await all(d, 'SELECT chat_id FROM chat_members WHERE user_id = ?', u.id);
+  await deleteWallet(ctx, u.id);
   await run(d, 'DELETE FROM users WHERE id = ?', u.id);
   for (const c of chats) {
     const left = await one(d, 'SELECT COUNT(*) AS n FROM chat_members WHERE chat_id = ?', c.chat_id);
@@ -447,6 +449,8 @@ export async function social(ctx, request, path, body, url) {
   if (is('POST', /^\/me\/avatar$/)) return setAvatar(ctx, await currentUser(ctx, request), body);
   if (is('POST', /^\/me\/profile$/)) return setProfile(ctx, await currentUser(ctx, request), body);
   if (is('POST', /^\/me\/stats$/)) return putStats(ctx, await currentUser(ctx, request), body);
+  if (is('GET', /^\/me\/wallet$/)) return getWallet(ctx, await currentUser(ctx, request), url.searchParams.get('have'));
+  if (is('POST', /^\/me\/wallet$/)) return putWallet(ctx, await currentUser(ctx, request), body);
   if (is('POST', /^\/me\/activity$/)) return postActivity(ctx, await currentUser(ctx, request), body);
   if (is('POST', /^\/me\/delete$/)) return deleteAccount(ctx, await currentUser(ctx, request), body);
   if (is('GET', /^\/users\/search$/)) return searchUsers(ctx, await currentUser(ctx, request, false), url.searchParams.get('q'));

@@ -18,6 +18,8 @@ import m2 from '../../worker/migrations/0002_social.sql';
 import m3 from '../../worker/migrations/0003_vault.sql';
 // @ts-ignore sql text
 import m4 from '../../worker/migrations/0004_admin_controls.sql';
+// @ts-ignore sql text
+import m5 from '../../worker/migrations/0005_wallets.sql';
 
 export const DEMO_BASE = 'https://test-copy.bagz';
 const DB_NAME = 'bagz-test-copy', STORE = 'db', KEY = 'sqlite';
@@ -88,11 +90,12 @@ function start() {
     if (!saved) { db.exec(m1); db.exec(m2); }
     db.exec(m3); // IF NOT EXISTS: also upgrades test copies saved before the Vault
     db.exec(m4); // same for the admin controls tables
+    db.exec(m5); // and the synced paper wallets
     const d1 = new BrowserD1(db);
     // save after writes, at most once a second, and when the page is hidden
     setInterval(() => { if (d1.dirty) { d1.dirty = false; saveBytes(db.export()); } }, 1000);
     document.addEventListener('visibilitychange', () => { if (document.hidden && d1.dirty) { d1.dirty = false; saveBytes(db.export()); } });
-    const env = { Db: d1, TEST_COPY: '1', ENABLE_LIVE_BOOST_PAYMENTS: 'true', PROBE_TOKEN: 'test-copy', ALLOWED_ORIGINS: DEMO_BASE, PASSWORD_ITERATIONS: '100000', RATE_PER_MIN: '100000', RATE_POST_PER_MIN: '100000', ADMIN_SESSION_SECRET: 'test-copy-only-'.padEnd(40, 'x') };
+    const env = { Db: d1, TEST_COPY: '1', ENABLE_LIVE_BOOST_PAYMENTS: 'true', PROBE_TOKEN: 'test-copy', ALLOWED_ORIGINS: DEMO_BASE, PASSWORD_ITERATIONS: '100000', RATE_PER_MIN: '100000', RATE_POST_PER_MIN: '100000', RATE_WALLET_PER_MIN: '100000', ADMIN_SESSION_SECRET: 'test-copy-only-'.padEnd(40, 'x') };
     return { d1, env };
   })();
   return ready;

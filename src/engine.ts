@@ -2,6 +2,7 @@ import type {
   Audit, Chain, ChainTrade, Coin, Notif, Order, Side, SourceId, SourceStatus, State, Trade, WalletSeen,
 } from './types';
 import { MAJORS, NARRATIVES } from './seed';
+import { docOf, applyDoc, mergeWallets, fingerprint, MAX_TRADES, type WalletDoc } from './sync/merge';
 import { SNAPSHOT_AT, JUPITER as SNAP_JUP, PUMP_LIVE as SNAP_PUMP, DEXSCREENER as SNAP_DS, BOOSTS as SNAP_BOOSTS } from './snapshot';
 import { compact, pct, price as fmtPrice } from './format';
 import { request, queueDepth } from './providers/http';
@@ -38,6 +39,11 @@ export function setWalletOwner(userId: string | null) {
   } catch { /* storage blocked */ }
 }
 const STATE_VERSION = 10;
+/** id of this tab, and the save number it last read or wrote: another tab's save shows up as a different number */
+const TAB = Math.random().toString(36).slice(2, 10);
+let tabSeq = -1;
+let tabBase: WalletDoc | null = null;
+export const walletStorageKey = () => walletKey;
 
 let idSeq = 0;
 export const uid = (p: string) => `${p}${Date.now().toString(36)}${(idSeq++).toString(36)}`;
@@ -625,7 +631,7 @@ export interface TradeResult { ok: boolean; message: string; trade?: Trade }
 const fmtUsd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtQty = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toFixed(2));
 
-export function userTrade(st: State, coinId: string, side: Side, amount: number, opts: { slippage?: number; via?: string } = {}): TradeResult {
+export function userTrade(st: State, coinId: string, side: Side, amount: number, opts: { slippage?: number; via?: string; id?: string } = {}): TradeResult {
   const c = st.coins[coinId];
   if (!c) return { ok: false, message: 'That coin is no longer listed.' };
   const u = st.user;
@@ -641,9 +647,9 @@ export function userTrade(st: State, coinId: string, side: Side, amount: number,
     pos.qty += q.qty;
     pos.cost += amount;
     u.positions[coinId] = pos;
-    const tr: Trade = { id: uid('x'), t: now, side, coinId, symbol: c.symbol, qty: q.qty, price: q.execPrice, usd: amount, fee: q.fee, via: opts.via || 'market' };
+    const tr: Trade = { id: opts.id || uid('x'), t: now, side, coinId, symbol: c.symbol, qty: q.qty, price: q.execPrice, usd: amount, fee: q.fee, via: opts.via || 'market' };
     u.trades.unshift(tr);
-    if (u.trades.length > 300) u.trades.length = 300;
+    if (u.trades.length > MAX_TRADES) u.trades.length = MAX_TRADES;
     return { ok: true, message: `Bought ${fmtQty(q.qty)} $${c.symbol} at ${fmtPrice(q.execPrice)}`, trade: tr };
   }
   const pos = u.positions[coinId];
@@ -658,9 +664,9 @@ export function userTrade(st: State, coinId: string, side: Side, amount: number,
   pos.cost -= costPart;
   if (pos.qty <= 0 || pos.qty * c.price < 0.01) delete u.positions[coinId];
   u.cash += q.usd;
-  const tr: Trade = { id: uid('x'), t: now, side, coinId, symbol: c.symbol, qty: sellQty, price: q.execPrice, usd: q.usd, fee: q.fee, pnl, peakAfter: q.execPrice, via: opts.via || 'market' };
+  const tr: Trade = { id: opts.id || uid('x'), t: now, side, coinId, symbol: c.symbol, qty: sellQty, price: q.execPrice, usd: q.usd, fee: q.fee, pnl, peakAfter: q.execPrice, via: opts.via || 'market' };
   u.trades.unshift(tr);
-  if (u.trades.length > 300) u.trades.length = 300;
+  if (u.trades.length > MAX_TRADES) u.trades.length = MAX_TRADES;
   if (!u.positions[coinId]) u.orders = u.orders.filter((o) => !(o.coinId === coinId && o.side === 'SELL'));
   return { ok: true, message: `Sold ${fmtQty(sellQty)} $${c.symbol} for ${fmtUsd(q.usd)} (${pnl >= 0 ? '+' : '-'}${fmtUsd(Math.abs(pnl))})`, trade: tr };
 }
@@ -699,11 +705,11 @@ function checkOrders(st: State) {
     const hit = o.side === 'BUY' ? c.price <= o.trigger : o.kind === 'sl' ? c.price <= o.trigger : c.price >= o.trigger;
     if (!hit) { keep.push(o); continue; }
     let res: TradeResult;
-    if (o.side === 'BUY') res = userTrade(st, o.coinId, 'BUY', Math.min(o.usd || 0, u.cash), { slippage: 50, via: o.kind });
+    if (o.side === 'BUY') res = userTrade(st, o.coinId, 'BUY', Math.min(o.usd || 0, u.cash), { slippage: 50, via: o.kind, id: `f-${o.id}` });
     else {
       const pos = u.positions[o.coinId];
       if (!pos) continue;
-      res = userTrade(st, o.coinId, 'SELL', pos.qty * ((o.pct ?? 100) / 100), { slippage: 90, via: o.kind });
+      res = userTrade(st, o.coinId, 'SELL', pos.qty * ((o.pct ?? 100) / 100), { slippage: 90, via: o.kind, id: `f-${o.id}` });
     }
     const label = o.kind === 'sl' ? 'Stop-loss hit' : o.kind === 'tp' ? 'Take-profit hit' : 'Limit buy filled';
     notify(st, { tone: res.ok ? (o.kind === 'sl' ? 'down' : 'up') : 'info', title: res.ok ? `${label} · $${c.symbol}` : `Order for $${c.symbol} couldn’t fill`, body: res.message, coinId: c.id });
@@ -876,6 +882,11 @@ export function freshState(): State {
   return st;
 }
 
+/** start the paper wallet over (a new epoch, so other devices take the reset instead of merging old trades back in) */
+export function resetWallet(st: State) {
+  st.user = { ...st.user, cash: START_CASH, deposits: START_CASH, positions: {}, trades: [], orders: [], theses: [], equity: [{ t: Date.now(), v: START_CASH }], epoch: uid('e') };
+}
+
 /** Wallet backup: everything you did (cash, positions, every buy and sell, orders, theses, value history). */
 export function exportWallet(st: State): string {
   const keep = new Set<string>([...Object.keys(st.user.positions), ...st.user.orders.map((o) => o.coinId), ...st.user.trades.map((t) => t.coinId), ...st.user.theses.map((t) => t.coinId)]);
@@ -889,35 +900,64 @@ export function importWallet(st: State, text: string): { ok: boolean; message: s
     const j = JSON.parse(text);
     const u = j?.user;
     if ((j?.app !== 'bagz' && j?.app !== 'frenzy') || !u || typeof u.cash !== 'number' || !Array.isArray(u.trades) || typeof u.positions !== 'object') return { ok: false, message: 'That file isn’t a BAGZ wallet backup.' };
-    st.user = { following: [], theses: [], orders: [], equity: [], ...u };
+    st.user = { following: [], theses: [], orders: [], equity: [], ...u, epoch: uid('e') };
     if (j.settings) st.settings = { ...st.settings, ...j.settings };
     for (const c of Object.values(j.coins || {}) as Coin[]) if (c?.id && !st.coins[c.id]) st.coins[c.id] = { ...c, updatedAt: 0 };
     return { ok: true, message: `Restored ${u.trades.length} trades and ${Object.keys(u.positions).length} positions.` };
   } catch { return { ok: false, message: 'Couldn’t read that file. Pick the .json backup BAGZ saved.' }; }
 }
 
+const docFromSaved = (saved: any): WalletDoc => ({ v: 1, epoch: saved.user.epoch || '', user: saved.user, settings: saved.settings, coins: saved.coins || {} });
+function readSaved(): any {
+  const raw = localStorage.getItem(walletKey);
+  const saved = raw ? JSON.parse(raw) : null;
+  return saved && saved.v === STATE_VERSION && saved.user ? saved : null;
+}
+
 export function load(): State {
   const st = freshState();
+  tabSeq = -1; tabBase = null;
   try {
-    const raw = localStorage.getItem(walletKey);
-    if (raw) {
-      const saved = JSON.parse(raw);
-      if (saved && saved.v === STATE_VERSION && saved.user) {
-        st.user = saved.user;
-        st.settings = { ...st.settings, ...(saved.settings || {}) };
-        for (const c of Object.values(saved.coins || {}) as Coin[]) if (!st.coins[c.id]) st.coins[c.id] = { ...c, updatedAt: 0 };
-      }
+    const saved = readSaved();
+    if (saved) {
+      st.user = saved.user;
+      st.settings = { ...st.settings, ...(saved.settings || {}) };
+      for (const c of Object.values(saved.coins || {}) as Coin[]) if (!st.coins[c.id]) st.coins[c.id] = { ...c, updatedAt: 0 };
+      tabSeq = saved.seq ?? 0;
     }
   } catch { /* storage blocked or corrupt; start fresh */ }
+  tabBase = docOf(st);
   return st;
+}
+
+/**
+ * Bring in what another tab of this browser saved since this tab last read or wrote, keeping this tab's own changes.
+ * Returns true when the wallet changed. Without this, an older tab would overwrite a newer tab's trades on its next save.
+ */
+export function mergeFromOtherTab(st: State): boolean {
+  try {
+    const saved = readSaved();
+    if (!saved || (saved.seq ?? 0) === tabSeq) return false;
+    const theirs = docFromSaved(saved);
+    const before = fingerprint(docOf(st));
+    const merged = mergeWallets(tabBase, docOf(st), theirs);
+    applyDoc(st, merged);
+    tabSeq = saved.seq ?? 0;
+    tabBase = theirs;
+    return fingerprint(merged) !== before;
+  } catch { return false; }
 }
 
 export function save(st: State) {
   try {
-    const keep = new Set<string>([...Object.keys(st.user.positions), ...st.user.orders.map((o) => o.coinId), ...st.user.trades.map((t) => t.coinId), ...st.user.theses.map((t) => t.coinId)]);
+    mergeFromOtherTab(st);
+    const keep = new Set<string>([...Object.keys(st.user.positions), ...st.user.orders.map((o) => o.coinId), ...st.user.trades.map((t) => t.coinId), ...st.user.theses.map((t) => t.coinId), ...(st.user.watchlist || [])]);
     const coins: Record<string, Coin> = {};
     keep.forEach((id) => { const c = st.coins[id]; if (c) coins[id] = { ...c, spark: c.spark.slice(-60) }; });
-    localStorage.setItem(walletKey, JSON.stringify({ v: STATE_VERSION, user: st.user, settings: st.settings, coins }));
+    const seq = Math.max(tabSeq, 0) + 1;
+    localStorage.setItem(walletKey, JSON.stringify({ v: STATE_VERSION, seq, tab: TAB, user: st.user, settings: st.settings, coins }));
+    tabSeq = seq;
+    tabBase = docOf(st);
   } catch { /* ignore */ }
 }
 

@@ -730,7 +730,7 @@ export async function api(request, env, deps) {
   let body = {};
   if (method === 'POST') {
     const text = await request.text();
-    if (text.length > (path === '/me/avatar' ? 220_000 : 8000)) throw new ApiError(413, 'Body too large');
+    if (text.length > (path === '/me/avatar' ? 220_000 : path === '/me/wallet' ? 1_050_000 : 8000)) throw new ApiError(413, 'Body too large');
     if (text) { try { body = JSON.parse(text); } catch { throw bad('Invalid JSON'); } }
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad('Body must be a JSON object');
   }
