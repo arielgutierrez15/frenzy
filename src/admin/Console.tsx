@@ -13,7 +13,7 @@ const n0 = (n: number) => n.toLocaleString('en-US');
 const when = (t: number) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /** download rows as a CSV file (opens in Excel / Google Sheets) */
-function downloadCsv(name: string, head: string[], rows: (string | number | null | undefined)[][]) {
+export function downloadCsv(name: string, head: string[], rows: (string | number | null | undefined)[][]) {
   const esc = (v: unknown) => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const csv = [head, ...rows].map((r) => r.map(esc).join(',')).join('\n');
   const a = document.createElement('a');
@@ -23,7 +23,7 @@ function downloadCsv(name: string, head: string[], rows: (string | number | null
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'up' | 'down' }) {
+export function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'up' | 'down' }) {
   return (
     <div className="kpi">
       <div className="kpi-label">{label}</div>
@@ -34,9 +34,10 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
 }
 
 /** daily bar chart; tap or hover a bar to read its day */
-function Bars({ data, label, unit = '' }: { data: Daily[]; label: string; unit?: string }) {
+export function Bars({ data, label, unit = '', fmt = n0, floor = 1 }: { data: Daily[]; label: string; unit?: string; fmt?: (n: number) => string; floor?: number }) {
   const [hi, setHi] = useState<number | null>(null);
-  const max = Math.max(1, ...data.map((d) => d.n));
+  const peak = Math.max(0, ...data.map((d) => d.n));
+  const max = Math.max(floor, peak); // bar scale; the caption shows the real peak
   const total = data.reduce((s, d) => s + d.n, 0);
   const W = 600, H = 150, gap = data.length > 40 ? 1 : 3, bw = (W - gap * (data.length - 1)) / data.length;
   const pick = hi === null ? null : data[hi];
@@ -45,7 +46,7 @@ function Bars({ data, label, unit = '' }: { data: Daily[]; label: string; unit?:
     <figure className="bars">
       <figcaption className="row gap-s">
         <span className="kpi-label">{label}</span><span className="grow" />
-        <span className="small num">{pick ? <><b>{n0(pick.n)}</b>{unit} · {fmtDay(pick.day)}</> : <><b>{n0(total)}</b>{unit} total · peak {n0(max)}</>}</span>
+        <span className="small num">{pick ? <><b>{fmt(pick.n)}</b>{unit} · {fmtDay(pick.day)}</> : <><b>{fmt(total)}</b>{unit} total · peak {fmt(peak)}</>}</span>
       </figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${label}: ${total} over ${data.length} days`} onMouseLeave={() => setHi(null)}>
         <line x1="0" x2={W} y1={H - 0.5} y2={H - 0.5} className="bars-base" />

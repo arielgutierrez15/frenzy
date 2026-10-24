@@ -24,6 +24,11 @@ import {
 import { social, currentUser } from './social.js';
 import { vault } from './vault.js';
 import { adminOverview, adminUsers, adminLog } from './admin.js';
+import {
+  isPaused, isBlocked, blockedSet, auditAt, boostCounts, getSwitches, setSwitch, revenue, walletBalances, listBlocklist, blockToken,
+  unblockToken, userStats, vaultAdmin, setCard, adjustCoins, setRewards, auditLog, publicBlocklist,
+} from './controls.js';
+import { CHALLENGES } from './vault.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -251,10 +256,11 @@ function explainSimError(sim) {
 async function swapPrepare(ctx, b) {
   const cfg = config(ctx.env);
   const inp = readSwapInput(b);
-  if (!cfg.liveSwaps) {
+  const paused = cfg.liveSwaps && await isPaused(ctx, 'swaps');
+  if (!cfg.liveSwaps || paused) {
     // preview only: exact Jupiter /build quote with the BAGZ fee, no transaction, nothing stored
     const built = await buildSwap(ctx, inp, cfg, { simulate: false });
-    return { live: false, quote: built.quote, note: 'Live swaps are switched off. This is a quote only; nothing can be signed.' };
+    return { live: false, quote: built.quote, note: paused ? 'Live swaps are paused right now. This is a quote only; nothing can be signed.' : 'Live swaps are switched off. This is a quote only; nothing can be signed.' };
   }
   const d = needDb(ctx);
   const key = b.idempotencyKey;
@@ -278,6 +284,7 @@ async function swapPrepare(ctx, b) {
 async function swapSubmit(ctx, b) {
   const cfg = config(ctx.env);
   if (!cfg.liveSwaps) throw new ApiError(403, 'Live swaps are switched off');
+  if (await isPaused(ctx, 'swaps')) throw new ApiError(403, 'Live swaps are paused right now. Nothing was sent.');
   const d = needDb(ctx);
   if (typeof b.swapId !== 'string' || !ID.test(b.swapId)) throw bad('swapId is not valid');
   const row = await one(d, 'SELECT * FROM swaps WHERE id = ?', b.swapId);
@@ -406,15 +413,18 @@ function solanaPayUrl(cfg, order) {
 async function boostPreview(ctx, b) {
   if (!isPubkey(b.mint)) throw bad('Enter a valid Solana token address');
   const pkg = pkgOf(b.package);
+  if (await isBlocked(ctx, b.mint)) throw new ApiError(403, 'This token can’t be promoted on BAGZ');
   const token = await tokenInfo(ctx, b.mint);
-  return { token, package: pkg, live: config(ctx.env).liveBoostPayments };
+  return { token, package: pkg, live: config(ctx.env).liveBoostPayments && !(await isPaused(ctx, 'boost')) };
 }
 
 async function boostCreate(ctx, b) {
   const cfg = config(ctx.env);
   if (!cfg.liveBoostPayments) throw new ApiError(403, 'BOOST payments are switched off');
+  if (await isPaused(ctx, 'boost')) throw new ApiError(403, 'BOOST is paused right now. Try again later.');
   const d = needDb(ctx);
   if (!isPubkey(b.mint)) throw bad('Enter a valid Solana token address');
+  if (await isBlocked(ctx, b.mint)) throw new ApiError(403, 'This token can’t be promoted on BAGZ');
   if (!isPubkey(b.advertiser)) throw bad('Connect the wallet that will pay');
   if (typeof b.idempotencyKey !== 'string' || !ID.test(b.idempotencyKey)) throw bad('idempotencyKey is required');
   const pkg = pkgOf(b.package);
@@ -435,6 +445,7 @@ async function boostCreate(ctx, b) {
 async function boostPaymentTx(ctx, id, b) {
   const cfg = config(ctx.env);
   if (!cfg.liveBoostPayments) throw new ApiError(403, 'BOOST payments are switched off');
+  if (await isPaused(ctx, 'boost')) throw new ApiError(403, 'BOOST is paused right now. Nothing was charged.');
   const d = needDb(ctx);
   const row = await one(d, 'SELECT * FROM promotions WHERE id = ?', id);
   if (!row) throw new ApiError(404, 'Unknown order');
@@ -463,6 +474,7 @@ async function boostPaymentTx(ctx, id, b) {
 async function boostSubmit(ctx, id, b) {
   const cfg = config(ctx.env);
   if (!cfg.liveBoostPayments) throw new ApiError(403, 'BOOST payments are switched off');
+  if (await isPaused(ctx, 'boost')) throw new ApiError(403, 'BOOST is paused right now. Nothing was sent.');
   const d = needDb(ctx);
   const row = await one(d, 'SELECT * FROM promotions WHERE id = ?', id);
   if (!row) throw new ApiError(404, 'Unknown order');
@@ -565,7 +577,8 @@ async function boostActive(ctx) {
   const d = database(ctx.env);
   if (!d) return { campaigns: [] };
   const t = ctx.now();
-  const rows = await all(d, "SELECT * FROM promotions WHERE status = 'approved' AND starts_at <= ? AND ends_at > ? LIMIT 50", t, t);
+  const blocked = await blockedSet(ctx);
+  const rows = (await all(d, "SELECT * FROM promotions WHERE status = 'approved' AND starts_at <= ? AND ends_at > ? LIMIT 50", t, t)).filter((r) => !blocked.has(r.mint));
   rows.sort((a, b) => PACKAGES[b.package].rank - PACKAGES[a.package].rank || a.starts_at - b.starts_at);
   return { campaigns: rows.slice(0, 12).map((r) => ({ id: r.id, mint: r.mint, symbol: r.symbol, name: r.name, icon: r.icon, package: r.package, endsAt: r.ends_at })), at: t };
 }
@@ -626,6 +639,7 @@ async function adminSession(ctx, b) {
   const use = await run(d, 'UPDATE admin_challenges SET used = 1 WHERE nonce = ? AND used = 0', b.nonce);
   if (changes(use) !== 1) throw new ApiError(401, 'Sign-in challenge was already used');
   const exp = ctx.now() + ADMIN_SESSION_MS;
+  try { await auditAt(ctx, d, b.wallet, 'signin', null); } catch { /* audit table not created yet: sign-in still works */ }
   const payload = b64url(enc.encode(JSON.stringify({ w: b.wallet, exp })));
   return { token: `${payload}.${await hmac(secret, payload)}`, wallet: b.wallet, expiresAt: exp };
 }
@@ -644,16 +658,21 @@ export async function requireAdmin(ctx, request) {
 }
 async function adminList(ctx, status) {
   const d = needDb(ctx);
-  const ok = ['awaiting_payment', 'pending_review', 'approved', 'rejected', 'all'];
+  const ok = ['awaiting_payment', 'pending_review', 'approved', 'running', 'rejected', 'cancelled', 'all'];
   const s = ok.includes(status) ? status : 'pending_review';
-  const rows = s === 'all' ? await all(d, 'SELECT * FROM promotions ORDER BY created_at DESC LIMIT 200') : await all(d, 'SELECT * FROM promotions WHERE status = ? ORDER BY created_at DESC LIMIT 200', s);
+  const t = ctx.now();
+  const rows = s === 'all' ? await all(d, 'SELECT * FROM promotions ORDER BY created_at DESC LIMIT 200')
+    : s === 'running' ? await all(d, "SELECT * FROM promotions WHERE status = 'approved' AND starts_at <= ? AND ends_at > ? ORDER BY ends_at ASC LIMIT 200", t, t)
+      : await all(d, 'SELECT * FROM promotions WHERE status = ? ORDER BY created_at DESC LIMIT 200', s);
+  const blocked = await blockedSet(ctx);
   const out = [];
   for (const r of rows) {
     const pay = await one(d, 'SELECT signature, payer, amount_raw, block_time FROM payments WHERE promotion_id = ?', r.id);
     const st = await one(d, 'SELECT COALESCE(SUM(impressions),0) AS impressions, COALESCE(SUM(clicks),0) AS clicks FROM campaign_stats WHERE promotion_id = ?', r.id);
-    out.push({ ...orderView(r), payment: pay || null, stats: { impressions: Number(st.impressions), clicks: Number(st.clicks) }, reviewedBy: r.reviewed_by || null });
+    out.push({ ...orderView(r), payment: pay || null, stats: { impressions: Number(st.impressions), clicks: Number(st.clicks) }, reviewedBy: r.reviewed_by || null,
+      blocked: blocked.has(r.mint), running: r.status === 'approved' && r.starts_at <= t && r.ends_at > t, refundOwed: r.status === 'rejected' && !!pay && !String(pay.signature).startsWith('TEST-PAYMENT-') });
   }
-  return { promotions: out };
+  return { promotions: out, counts: await boostCounts(ctx, d) };
 }
 async function adminDecide(ctx, admin, id, action, b) {
   const d = needDb(ctx);
@@ -662,6 +681,7 @@ async function adminDecide(ctx, admin, id, action, b) {
   if (row.status !== 'pending_review') throw new ApiError(409, `Only paid orders waiting for review can be ${action}d (this one is ${row.status})`);
   const t = ctx.now();
   if (action === 'approve') {
+    if (await isBlocked(ctx, row.mint)) throw new ApiError(409, 'This token is on the blocklist. Reject the order instead (and refund it), or unblock the token first.');
     const want = Number(b.startsAt || 0);
     if (want && (!Number.isFinite(want) || want > t + 30 * 86400_000)) throw bad('startsAt must be within 30 days');
     const start = Math.max(t, want || 0);
@@ -671,6 +691,21 @@ async function adminDecide(ctx, admin, id, action, b) {
     const r = await run(d, "UPDATE promotions SET status = 'rejected', reviewed_by = ?, review_note = ?, updated_at = ? WHERE id = ? AND status = 'pending_review'", admin, String(b.note || 'Rejected').slice(0, 300), t, id);
     if (changes(r) !== 1) throw new ApiError(409, 'Order changed while reviewing');
   }
+  try { await auditAt(ctx, d, admin, `boost.${action}`, id, { symbol: row.symbol, package: row.package, note: String(b.note || '').slice(0, 300) || undefined }); } catch { /* audit table not created yet */ }
+  return { order: orderView(await one(d, 'SELECT * FROM promotions WHERE id = ?', id)) };
+}
+/** stop an approved campaign now (it stops showing at once). The advertiser sees the note. Refunds are done by hand. */
+async function adminEnd(ctx, admin, id, b) {
+  const d = needDb(ctx);
+  const row = await one(d, 'SELECT * FROM promotions WHERE id = ?', id);
+  if (!row) throw new ApiError(404, 'Unknown order');
+  if (row.status !== 'approved') throw new ApiError(409, `Only approved campaigns can be ended (this one is ${row.status.replace(/_/g, ' ')})`);
+  const why = String(b.note || '').trim().slice(0, 300);
+  if (!why) throw bad('Add a short reason for ending it; the advertiser sees it');
+  const t = ctx.now();
+  const r = await run(d, "UPDATE promotions SET status = 'cancelled', ends_at = MIN(COALESCE(ends_at, ?), ?), review_note = ?, reviewed_by = ?, updated_at = ? WHERE id = ? AND status = 'approved'", t, t, `Ended early: ${why}`, admin, t, id);
+  if (changes(r) !== 1) throw new ApiError(409, 'Order changed while ending it');
+  try { await auditAt(ctx, d, admin, 'boost.end', id, { symbol: row.symbol, package: row.package, note: why }); } catch { /* audit table not created yet */ }
   return { order: orderView(await one(d, 'SELECT * FROM promotions WHERE id = ?', id)) };
 }
 
@@ -705,7 +740,13 @@ export async function api(request, env, deps) {
   if (s !== undefined) return s;
   const v = await vault(ctx, request, path, body);
   if (v !== undefined) return v;
-  if (route('GET', /^\/config$/)) return publicConfig(env);
+  if (route('GET', /^\/config$/)) {
+    // the app hides live swaps / BOOST checkout while an admin has them paused
+    const c = publicConfig(env);
+    const [ps, pb, pu, pv] = await Promise.all([isPaused(ctx, 'swaps'), isPaused(ctx, 'boost'), isPaused(ctx, 'signups'), isPaused(ctx, 'vault')]);
+    return { ...c, liveSwaps: c.liveSwaps && !ps, liveBoostPayments: c.liveBoostPayments && !pb, paused: { swaps: ps, boost: pb, signups: pu, vault: pv } };
+  }
+  if (route('GET', /^\/blocklist$/)) return publicBlocklist(ctx);
   if (route('GET', /^\/wallet\/balances$/)) return balances(ctx, url.searchParams.get('owner'));
   if (route('POST', /^\/swap\/prepare$/)) return swapPrepare(ctx, body);
   if (route('POST', /^\/swap\/submit$/)) return swapSubmit(ctx, body);
@@ -726,5 +767,19 @@ export async function api(request, env, deps) {
   if (route('GET', /^\/admin\/users$/)) { await requireAdmin(ctx, request); return adminUsers(ctx, needDb(ctx), url); }
   if (route('GET', /^\/admin\/log$/)) { await requireAdmin(ctx, request); return adminLog(ctx, needDb(ctx), url); }
   if ((p = route('POST', /^\/admin\/promotions\/([A-Za-z0-9_-]{16,64})\/(approve|reject)$/))) { const who = await requireAdmin(ctx, request); return adminDecide(ctx, who, p[1], p[2], body); }
+  if ((p = route('POST', /^\/admin\/promotions\/([A-Za-z0-9_-]{16,64})\/end$/))) { const who = await requireAdmin(ctx, request); return adminEnd(ctx, who, p[1], body); }
+  if (route('GET', /^\/admin\/switches$/)) { await requireAdmin(ctx, request); return getSwitches(ctx); }
+  if (route('POST', /^\/admin\/switches$/)) { const who = await requireAdmin(ctx, request); return setSwitch(ctx, who, body); }
+  if (route('GET', /^\/admin\/revenue$/)) { await requireAdmin(ctx, request); return revenue(ctx, url.searchParams.get('days')); }
+  if (route('GET', /^\/admin\/revenue\/wallets$/)) { await requireAdmin(ctx, request); return walletBalances(ctx); }
+  if (route('GET', /^\/admin\/blocklist$/)) { await requireAdmin(ctx, request); return listBlocklist(ctx); }
+  if (route('POST', /^\/admin\/blocklist$/)) { const who = await requireAdmin(ctx, request); return blockToken(ctx, who, body); }
+  if (route('POST', /^\/admin\/blocklist\/remove$/)) { const who = await requireAdmin(ctx, request); return unblockToken(ctx, who, body); }
+  if (route('GET', /^\/admin\/user-stats$/)) { await requireAdmin(ctx, request); return userStats(ctx); }
+  if (route('GET', /^\/admin\/vault$/)) { await requireAdmin(ctx, request); return vaultAdmin(ctx, CHALLENGES); }
+  if (route('POST', /^\/admin\/vault\/card$/)) { const who = await requireAdmin(ctx, request); return setCard(ctx, who, body); }
+  if (route('POST', /^\/admin\/vault\/coins$/)) { const who = await requireAdmin(ctx, request); return adjustCoins(ctx, who, body); }
+  if (route('POST', /^\/admin\/vault\/rewards$/)) { const who = await requireAdmin(ctx, request); return setRewards(ctx, who, body, CHALLENGES); }
+  if (route('GET', /^\/admin\/audit$/)) { await requireAdmin(ctx, request); return auditLog(ctx, url); }
   throw new ApiError(404, 'Unknown route');
 }

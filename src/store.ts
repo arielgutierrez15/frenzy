@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { State } from './types';
-import { load, save, freshState, clearSave, setWalletOwner, discover, refreshPrices, refreshLiveTape, armAlerts, loadSnapshot, leaveSnapshot, PRICE_REFRESH_MS, DISCOVERY_REFRESH_MS, TAPE_REFRESH_MS } from './engine';
+import { load, save, freshState, clearSave, setWalletOwner, discover, refreshPrices, refreshLiveTape, armAlerts, loadSnapshot, leaveSnapshot, setBlockedMints, pruneBlocked, PRICE_REFRESH_MS, DISCOVERY_REFRESH_MS, TAPE_REFRESH_MS } from './engine';
+import { getBlocklist } from './trading/api';
 
 const anySourceOk = () => Object.values(state.sources).some((s) => s.ok);
 
@@ -61,13 +62,18 @@ const busy = { prices: false, discovery: false, tape: false };
 async function guarded(key: keyof typeof busy, fn: () => Promise<void>) {
   if (busy[key]) return;
   busy[key] = true;
-  try { await fn(); } finally { busy[key] = false; emit(); }
+  try { await fn(); } finally { busy[key] = false; pruneBlocked(state); emit(); }
+}
+/** tokens the BAGZ admins blocked; without a BAGZ server (or if it can't be reached) nothing is hidden */
+export async function refreshBlocklist() {
+  try { setBlockedMints((await getBlocklist()).mints || []); if (pruneBlocked(state)) emit(); } catch { /* keep the last list */ }
 }
 
 export function start() {
   if (started) return;
   started = true;
   (async () => {
+    refreshBlocklist(); // not awaited: a slow server never delays the first prices
     await guarded('discovery', () => discover(state));
     await guarded('prices', () => refreshPrices(state, focusCoin));
     // every request failed (e.g. inside a sandbox that blocks outside requests): show the bundled real snapshot
@@ -78,6 +84,7 @@ export function start() {
     await guarded('tape', () => refreshLiveTape(state, focusCoin));
   })();
   setInterval(() => guarded('prices', async () => { await refreshPrices(state, focusCoin); save(state); }), PRICE_REFRESH_MS);
+  setInterval(refreshBlocklist, DISCOVERY_REFRESH_MS);
   setInterval(() => guarded('discovery', async () => { await discover(state); if (state.snapshotAt && anySourceOk()) leaveSnapshot(state); }), DISCOVERY_REFRESH_MS);
   setInterval(() => guarded('tape', () => refreshLiveTape(state, focusCoin)), TAPE_REFRESH_MS);
   // relative times ("12s ago") keep moving between data refreshes

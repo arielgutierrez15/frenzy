@@ -91,10 +91,12 @@ export const activeCampaigns = () => apiCall<{ campaigns: Campaign[]; at: number
 export const sendCampaignEvent = (id: string, type: 'impression' | 'click') => apiCall<{ counted: boolean }>('/boost/events', { body: { id, type } }).catch(() => ({ counted: false }));
 
 // ---- admin ----------------------------------------------------------------------------------------------------------
-export interface AdminPromotion extends Order { payment: { signature: string; payer: string; amount_raw: string; block_time: number | null } | null; stats: { impressions: number; clicks: number }; reviewedBy: string | null }
+export interface AdminPromotion extends Order { payment: { signature: string; payer: string; amount_raw: string; block_time: number | null } | null; stats: { impressions: number; clicks: number }; reviewedBy: string | null; blocked?: boolean; running?: boolean; refundOwed?: boolean }
+export type BoostCounts = Partial<Record<Order['status'] | 'running' | 'refunds', number>>;
 export const adminChallenge = (wallet: string) => apiCall<{ nonce: string; message: string }>('/admin/challenge', { body: { wallet } });
 export const adminSession = (wallet: string, nonce: string, signature: string) => apiCall<{ token: string; wallet: string; expiresAt: number }>('/admin/session', { body: { wallet, nonce, signature } });
-export const adminPromotions = (token: string, status: string) => apiCall<{ promotions: AdminPromotion[] }>(`/admin/promotions?status=${encodeURIComponent(status)}`, { token });
+export const adminPromotions = (token: string, status: string) => apiCall<{ promotions: AdminPromotion[]; counts?: BoostCounts }>(`/admin/promotions?status=${encodeURIComponent(status)}`, { token });
+export const adminEndCampaign = (token: string, id: string, note: string) => apiCall<{ order: Order }>(`/admin/promotions/${id}/end`, { body: { note }, token });
 export const adminDecide = (token: string, id: string, action: 'approve' | 'reject', b: { startsAt?: number; note?: string }) => apiCall<{ order: Order }>(`/admin/promotions/${id}/${action}`, { body: b, token });
 
 export interface Daily { day: string; n: number }
@@ -118,6 +120,59 @@ export interface AdminEvent {
 export const adminOverview = (token: string, days: number) => apiCall<AdminOverview>(`/admin/overview?days=${days}`, { token });
 export const adminUsers = (token: string, o: { q?: string; sort?: string; offset?: number }) => apiCall<{ total: number; offset: number; users: AdminUser[] }>(`/admin/users?${new URLSearchParams({ q: o.q || '', sort: o.sort || 'new', offset: String(o.offset || 0) })}`, { token });
 export const adminLog = (token: string, type: string, before?: number) => apiCall<{ type: string; events: AdminEvent[]; next: number | null }>(`/admin/log?type=${encodeURIComponent(type)}${before ? `&before=${before}` : ''}`, { token });
+
+// ---- admin controls -------------------------------------------------------------------------------------------------
+export interface AdminSwitch { id: 'swaps' | 'boost' | 'signups' | 'vault'; label: string; help: string; paused: boolean; serverSwitch: 'on' | 'off' | null; running: boolean; updatedAt: number | null; updatedBy: string | null }
+export interface Switches { ready: boolean; migration: string | null; switches: AdminSwitch[] }
+export const adminSwitches = (token: string) => apiCall<Switches>('/admin/switches', { token });
+export const adminSetSwitch = (token: string, id: string, paused: boolean, reason: string) => apiCall<Switches>('/admin/switches', { body: { id, paused, reason }, token });
+
+type Totals = { today: number; d7: number; d30: number; all: number };
+export interface AdminRevenue {
+  generatedAt: number; days: number;
+  swapFees: { sol: Totals; usdc: Totals; swaps: number }; boost: { usdc: Totals; orders: number };
+  dailySwapFeesSol: Daily[]; dailySwapFeesUsdc: Daily[]; dailyBoostUsdc: Daily[];
+  byPackage: { package: string; orders: number; usdc: number }[]; refundsOwed: { orders: number; usdc: number }; testPayments: number;
+  live: { swaps: boolean; boost: boolean };
+}
+export interface WalletBalance { label: string; address: string; kind: string; amount: number | null; symbol?: string; error?: string }
+export const adminRevenue = (token: string, days: number) => apiCall<AdminRevenue>(`/admin/revenue?days=${days}`, { token });
+export const adminWallets = (token: string) => apiCall<{ at: number; accounts: WalletBalance[]; note?: string }>('/admin/revenue/wallets', { token, timeoutMs: 30_000 });
+
+export interface BlockedToken { mint: string; symbol: string | null; reason: string; createdAt: number; createdBy: string }
+export interface Blocklist { ready: boolean; migration?: string; tokens: BlockedToken[]; affectedBoosts?: { id: string; symbol: string | null; status: string }[] }
+export const adminBlocklist = (token: string) => apiCall<Blocklist>('/admin/blocklist', { token });
+export const adminBlockToken = (token: string, b: { mint: string; symbol?: string; reason: string }) => apiCall<Blocklist>('/admin/blocklist', { body: b, token });
+export const adminUnblockToken = (token: string, mint: string) => apiCall<Blocklist>('/admin/blocklist/remove', { body: { mint }, token });
+/** public: tokens the admins hid from the app */
+export const getBlocklist = () => apiCall<{ mints: string[]; at: number }>('/blocklist');
+
+type Leader = { username: string; value: number; extra: number | null };
+export interface AdminUserStats {
+  generatedAt: number; total: number; dau: number; wau: number; mau: number; stickiness: number | null;
+  retention: Record<'d1' | 'd7' | 'd30', { pct: number | null; base: number }>;
+  engagement: { none: number; some: number; regular: number; heavy: number };
+  profiles: { withPicture: number; withBio: number }; activeHoursUtc: number[];
+  leaders: { pnl: Leader[]; trades30d: Leader[]; coins: Leader[]; friends: Leader[] };
+}
+export const adminUserStats = (token: string) => apiCall<AdminUserStats>('/admin/user-stats', { token });
+
+export interface AdminCard { id: string; series: string; no: number; mode: string; rarity: 'common' | 'rare' | 'gem'; price: number; minted: number; lastSale: number | null; paused: boolean; dropAt: number | null; status: 'on_sale' | 'paused' | 'scheduled' | 'sold_out' }
+export interface AdminVault {
+  ready: boolean; migration: string | null; now: number; supply: number;
+  series: Record<string, { label: string }>; rarities: Record<string, { label: string; price: number }>;
+  cards: AdminCard[];
+  coins: { issued: number; spent: number; circulating: number; adjusted: number };
+  challenges: { id: string; title: string; defaultReward: number; reward: number }[];
+  adjustments: { username: string | null; delta: number; t: number }[];
+}
+export const adminVault = (token: string) => apiCall<AdminVault>('/admin/vault', { token });
+export const adminSetCard = (token: string, card: string, paused: boolean, dropAt: number | null) => apiCall<{ ok: true }>('/admin/vault/card', { body: { card, paused, dropAt }, token });
+export const adminAdjustCoins = (token: string, username: string, delta: number, reason: string) => apiCall<{ username: string; balance: number }>('/admin/vault/coins', { body: { username, delta, reason }, token });
+export const adminSetRewards = (token: string, rewards: Record<string, number>) => apiCall<{ ok: true }>('/admin/vault/rewards', { body: { rewards }, token });
+
+export interface AuditEntry { id: number; t: number; admin: string; action: string; target: string | null; detail: Record<string, any> | null }
+export const adminAudit = (token: string, group: string, before?: number) => apiCall<{ ready: boolean; migration?: string; entries: AuditEntry[]; next: number | null }>(`/admin/audit?group=${encodeURIComponent(group)}${before ? `&before=${before}` : ''}`, { token });
 
 /** random idempotency key (letters/digits, 24 chars) */
 export const newKey = () => { const a = crypto.getRandomValues(new Uint8Array(18)); return Array.from(a, (b) => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_'[b & 63]).join(''); };

@@ -54,7 +54,7 @@ Settings → Pages → Deploy from a branch → `main` → `/docs`. The site is 
 
 ## Deploy the Worker from the Cloudflare dashboard (no terminal)
 
-1. **D1 tables (once):** Cloudflare → Storage & Databases → D1 → your database → Console. Paste the whole of `worker/migrations/0001_swap_boost.sql` and run it, then the whole of `worker/migrations/0002_social.sql`.
+1. **D1 tables (once):** Cloudflare → Storage & Databases → D1 → your database → Console. Paste the whole of `worker/migrations/0001_swap_boost.sql` and run it, then the whole of `worker/migrations/0002_social.sql`. Also run `worker/migrations/0003_vault.sql` and `worker/migrations/0004_admin_controls.sql` (admin kill switches, token blocklist, Vault controls and the audit log; until 0004 runs the app works as before and those admin controls say the update is needed).
 2. **Config:** in `worker/wrangler.toml` set `name` to your Worker's exact name, and `database_name` / `database_id` to your D1 database (shown on its page). Commit.
 3. **Connect the repo:** Workers & Pages → your Worker → Settings → Build → connect `arielgutierrez15/frenzy`, branch `main`, root directory `worker`, deploy command `npx wrangler deploy`. Every push to `main` then redeploys the Worker.
 4. **Secrets:** Worker → Settings → Variables and Secrets → add `JUPITER_API_KEY`, `HELIUS_API_KEY`, `ADMIN_SESSION_SECRET` (32+ random characters), `ANALYTICS_SALT`, `PROBE_TOKEN` as **Secret** type.

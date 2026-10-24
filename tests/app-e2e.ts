@@ -181,10 +181,12 @@ async function ensureConnected(p: any, scope = 'main') {
 
   // admin
   await p.goto(`${APP}/?proxy=${encodeURIComponent(w.url)}#admin`);
-  check('typing #admin into the open tab navigates to the review desk', await until(async () => /Boost review/.test(await text(p, 'main'))));
+  check('typing #admin into the open tab navigates to the review desk', await until(async () => /Insights, controls and records/.test(await text(p, 'main'))));
   await ensureConnected(p);
   await p.locator('main button', { hasText: 'Sign in with this wallet' }).click();
   check('admin signs in with a wallet signature', await until(async () => /Signed in as/.test(await text(p, 'main'))));
+  check('the BOOST queue tab shows 1 order waiting', await until(async () => (await p.locator('.admin-nav button', { hasText: 'BOOST queue' }).locator('.admin-badge').innerText()) === '1'));
+  await p.locator('.admin-nav button', { hasText: 'BOOST queue' }).click();
   check('the paid order is waiting for review, with its payment', await until(async () => (await p.locator('.admin-row').count()) === 1 && /paid/.test(await text(p, '.admin-row'))));
   await p.locator('.admin-row button', { hasText: 'Approve' }).click();
   check('approve moves it out of the review queue', await until(async () => (await p.locator('.admin-row').count()) === 0));
