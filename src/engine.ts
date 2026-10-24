@@ -77,6 +77,23 @@ function countSource(st: State, id: SourceStatus['id'], n: number) {
 }
 
 // ======================================================================
+// admin token blocklist (from the BAGZ server): blocked tokens are dropped from the app's lists, search and trending.
+// A coin someone holds or has an open order in stays, so their paper position keeps working.
+let blockedMints = new Set<string>();
+export function setBlockedMints(mints: string[]) { blockedMints = new Set(mints); }
+export const isBlockedCoin = (c: { chain: Chain; address: string }) => c.chain === 'solana' && blockedMints.has(c.address);
+export function pruneBlocked(st: State): number {
+  if (!blockedMints.size) return 0;
+  let n = 0;
+  for (const [id, c] of Object.entries(st.coins)) {
+    if (!isBlockedCoin(c) || st.user.positions[id] || st.majors.includes(id) || st.user.orders.some((o) => o.coinId === id)) continue;
+    delete st.coins[id];
+    n++;
+  }
+  return n;
+}
+
+// ======================================================================
 // coin merge
 // ======================================================================
 type Patch = Partial<Omit<Coin, 'id' | 'chain' | 'address' | 'sources' | 'audit' | 'change'>> & {
@@ -476,8 +493,9 @@ export async function searchTokens(st: State, query: string): Promise<string[]> 
   for (const t of j.slice(0, 20)) {
     fromJupiter(st, t, undefined, at);
     const id = t?.id ? keyOf('solana', t.id) : '';
-    if (id && st.coins[id]) ids.push(id);
+    if (id && st.coins[id] && !isBlockedCoin(st.coins[id])) ids.push(id);
   }
+  pruneBlocked(st);
   return ids;
 }
 

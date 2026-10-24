@@ -147,7 +147,7 @@ const mainSeries = (p) => p.evaluate(() => { const c = window.__lwc.charts.filte
   // (the deliberate 503 from /v1/swap/prepare above is a configuration refusal, not a contract violation)
   const bad = w.log.filter((l) => l.method !== 'OPTIONS' && l.status >= 400);
   check('contract: no app request was rejected by the Worker (no 400/403/405)', bad.filter((l) => [400, 403, 405].includes(l.status)).length === 0, bad.map((l) => l.status + ' ' + l.path).join(' | '));
-  check('every Worker route the app used is an allowlisted provider or the BAGZ API', w.log.every((l) => /^\/(p\/(jup|gt|ds|pump|rug|rpc)(\/|\?|$)|health|v1\/(config|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)), w.log.filter((l) => !/^\/(p\/(jup|gt|ds|pump|rug|rpc)(\/|\?|$)|health|v1\/(config|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)).map((l) => l.path).join(' '));
+  check('every Worker route the app used is an allowlisted provider or the BAGZ API', w.log.every((l) => /^\/(p\/(jup|gt|ds|pump|rug|rpc)(\/|\?|$)|health|v1\/(config|blocklist|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)), w.log.filter((l) => !/^\/(p\/(jup|gt|ds|pump|rug|rpc)(\/|\?|$)|health|v1\/(config|blocklist|swap\/prepare|boost\/active|wallet\/balances))/.test(l.path)).map((l) => l.path).join(' '));
 
   // secrets
   check('secret key reached the upstream providers (injected server-side)', w.upstream.some((u) => u.key === SECRET));

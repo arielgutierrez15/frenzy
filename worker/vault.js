@@ -13,6 +13,7 @@
 import { ApiError, database } from './api.js';
 import { currentUser } from './social.js';
 import { CARDS, CARD_BY_ID, SUPPLY, priceOf } from './vault-cards.js';
+import { isPaused, cardControls, rewardOverrides } from './controls.js';
 
 const DAY = 86_400_000;
 const WELCOME = 100;
@@ -30,6 +31,8 @@ export const CHALLENGES = [
   { id: 'profit', title: 'Close a trade in profit', reward: 75, goal: 1, count: (a) => a.filter((x) => x.kind === 'trade' && x.side === 'SELL' && x.pnl > 0).length },
   { id: 'big20', title: 'Close a trade up 20% or more', reward: 150, goal: 1, count: (a) => a.filter((x) => x.kind === 'trade' && x.side === 'SELL' && x.pnl > 0 && x.usd - x.pnl > 0 && x.pnl / (x.usd - x.pnl) >= 0.2).length },
 ];
+/** a challenge's reward, after any change made in the admin console */
+const rewardOf = (c, over) => (Number.isInteger(over[c.id]) ? over[c.id] : c.reward);
 const dayOf = (t) => new Date(Math.floor(t / DAY) * DAY).toISOString().slice(0, 10);
 
 async function balance(d, uid) { return Number((await one(d, 'SELECT COALESCE(SUM(delta), 0) AS b FROM coin_ledger WHERE user_id = ?', uid)).b) || 0; }
@@ -52,21 +55,26 @@ async function state(ctx, u) {
     all(d, 'SELECT card_id, serial, t FROM card_mints WHERE user_id = ? ORDER BY t DESC', u.id),
   ]);
   const done = new Set(claimed.map((r) => r.ref.split(':')[0]));
+  const [over, ctl, paused] = await Promise.all([rewardOverrides(ctx), cardControls(ctx), isPaused(ctx, 'vault')]);
   return {
     balance: bal,
     welcome: welcome ? null : WELCOME,
     day, resetsAt: (Math.floor(now / DAY) + 1) * DAY,
-    challenges: CHALLENGES.map((c) => ({ id: c.id, title: c.title, reward: c.reward, goal: c.goal, progress: Math.min(c.goal, c.count(act)), claimed: done.has(c.id) })),
+    challenges: CHALLENGES.map((c) => ({ id: c.id, title: c.title, reward: rewardOf(c, over), goal: c.goal, progress: Math.min(c.goal, c.count(act)), claimed: done.has(c.id) })),
     supply: SUPPLY,
     minted: Object.fromEntries(minted.map((r) => [r.card_id, Number(r.n)])),
     mine: mine.map((r) => ({ card: r.card_id, serial: r.serial, t: r.t })),
     realMoney: false,
+    // admin controls: the whole Vault paused, or single cards paused / not dropped yet
+    paused,
+    cardControls: Object.fromEntries([...ctl].filter(([, v]) => v.paused || (v.dropAt && v.dropAt > now)).map(([k, v]) => [k, { paused: v.paused, dropAt: v.dropAt }])),
   };
 }
 
 async function claim(ctx, u, b) {
   const d = db(ctx);
   const now = ctx.now();
+  if (await isPaused(ctx, 'vault')) throw new ApiError(403, 'The Vault is paused right now. Your coins and cards are safe; try again later.');
   if (b.id === 'welcome') {
     const r = await d.prepare("INSERT OR IGNORE INTO coin_ledger (user_id, delta, reason, ref, t) VALUES (?, ?, 'welcome', 'welcome', ?)").bind(u.id, WELCOME, now).run();
     if (!changes(r)) throw bad('Welcome bonus already claimed');
@@ -75,7 +83,9 @@ async function claim(ctx, u, b) {
   const c = CHALLENGES.find((x) => x.id === b.id);
   if (!c) throw bad('Unknown challenge');
   if (c.count(await todaysActivity(d, u.id, now)) < c.goal) throw bad('Challenge not finished yet');
-  const r = await d.prepare("INSERT OR IGNORE INTO coin_ledger (user_id, delta, reason, ref, t) VALUES (?, ?, 'challenge', ?, ?)").bind(u.id, c.reward, `${c.id}:${dayOf(now)}`, now).run();
+  const reward = rewardOf(c, await rewardOverrides(ctx));
+  if (reward <= 0) throw bad('This challenge has no reward today');
+  const r = await d.prepare("INSERT OR IGNORE INTO coin_ledger (user_id, delta, reason, ref, t) VALUES (?, ?, 'challenge', ?, ?)").bind(u.id, reward, `${c.id}:${dayOf(now)}`, now).run();
   if (!changes(r)) throw bad('Already claimed today');
   return state(ctx, u);
 }
@@ -84,6 +94,10 @@ async function buy(ctx, u, b) {
   const card = CARD_BY_ID[b.card];
   if (!card) throw bad('Unknown card');
   if ((b.pay ?? 'coins') !== 'coins') throw new ApiError(403, 'Buying with real money isn’t available yet');
+  if (await isPaused(ctx, 'vault')) throw new ApiError(403, 'The Vault is paused right now. Try again later.');
+  const ctl = (await cardControls(ctx)).get(card.id);
+  if (ctl && ctl.paused) throw new ApiError(403, 'This card isn’t for sale right now');
+  if (ctl && ctl.dropAt && ctl.dropAt > ctx.now()) throw new ApiError(403, `This card drops ${new Date(ctl.dropAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')}`);
   const d = db(ctx);
   const price = priceOf(card);
   const now = ctx.now();

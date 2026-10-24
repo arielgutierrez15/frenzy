@@ -11,6 +11,7 @@
  *  - Leaderboard numbers are paper-trading stats reported by the app. They are range-checked here, but they are not
  *    independently verified, and the app says so.
  */
+import { isPaused } from './controls.js';
 import { ApiError, database } from './api.js';
 
 const DAY = 86_400_000;
@@ -93,6 +94,7 @@ async function signup(ctx, b, ip) {
   if (password.length < 8) throw bad('Use a password of at least 8 characters');
   if (password.length > 128) throw bad('Password is too long (128 characters max)');
   if (password.toLowerCase() === username.toLowerCase()) throw bad('Your password can’t be your username');
+  if (await isPaused(ctx, 'signups')) throw new ApiError(403, 'New sign-ups are paused right now. Try again a bit later.');
   const now = ctx.now();
   if (await throttled(d, `signup:${ip}`, 5, 3600_000, now)) throw new ApiError(429, 'Too many new accounts from this network. Try again later.');
   if (await one(d, 'SELECT id FROM users WHERE username_lc = ?', username.toLowerCase())) throw new ApiError(409, 'That username is taken');
