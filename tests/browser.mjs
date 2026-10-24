@@ -100,57 +100,78 @@ const volSeries = async (p) => { const c = await charts(p); return c[c.length - 
   check(`coin page $${sym}: candlestick series created with data`, ok24, JSON.stringify(await mainSeries(p)).slice(0, 160));
   await p.screenshot({ path: `${SHOTS}/02-coin-desktop.png`, fullPage: true });
   let ms = await mainSeries(p);
-  check('default range 24H / 15m draws ~96 candles (the requested 98 trimmed to the 24h window)', ms?.kind === 'candle' && ms.n >= 96 && ms.n <= 98, `kind=${ms?.kind} n=${ms?.n}`);
+  check('default range 24H / 5m draws ~288 candles (the requested 290 trimmed to the 24h window)', ms?.kind === 'candle' && ms.n >= 288 && ms.n <= 290, `kind=${ms?.kind} n=${ms?.n}`);
   check('candles are in ascending time order with OHLC fields', ms.first.time < ms.last.time && ['open', 'high', 'low', 'close'].every((k) => ms.first[k] > 0));
   const vs = await volSeries(p);
   check('volume histogram drawn with the same candles', vs?.n === ms.n);
   check('high/low markers placed', ms.markers === 2, String(ms.markers));
 
-  await p.locator('.chart-gear').click();
-  const rangeBtns = await p.locator('.chart-panel .seg').nth(0).locator('button').allInnerTexts();
-  check('range buttons are 1H 4H 24H 7D 30D', rangeBtns.join(',') === '1H,4H,24H,7D,30D', rangeBtns.join(','));
-  const ivOf = async () => (await p.locator('.chart-panel .seg').nth(1).locator('button').allInnerTexts()).join(',');
+  // timeframe: one button that opens a menu of ranges (up to All, since the coin was created) and candle sizes
+  check('timeframe button shows range and candle size, menu closed', /24H/.test(await p.locator('.tf-btn').innerText()) && (await p.locator('.tf-menu').count()) === 0);
+  const openTf = async () => { if (!(await p.locator('.tf-menu').count())) await p.locator('.tf-btn').click(); };
+  const pickRange = async (r) => { await openTf(); await p.locator('.tf-menu .tf-grid').nth(0).locator('button', { hasText: new RegExp('^' + r + '$') }).click(); };
+  const pickIv = async (i) => { await openTf(); await p.locator('.tf-menu .tf-grid').nth(1).locator('button', { hasText: new RegExp('^' + i + '$') }).click(); };
+  await openTf();
+  const rangeBtns = await p.locator('.tf-menu .tf-grid').nth(0).locator('button').allInnerTexts();
+  check('range menu starts 1H 4H 24H 7D 30D and ends with All · <age>', rangeBtns.slice(0, 5).join(',') === '1H,4H,24H,7D,30D' && /^All( · \d+(\.\d)?[mhdy])?$/.test(rangeBtns[rangeBtns.length - 1]), rangeBtns.join(','));
+  const ivOf = async () => { await openTf(); return (await p.locator('.tf-menu .tf-grid').nth(1).locator('button').allInnerTexts()).join(','); };
 
   const lastUrl = (re) => [...mock.requests].reverse().find((r) => re.test(r)) || '';
-  await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^7D$/ }).click();
+  await pickRange('7D');
   await until(async () => /ohlcv\/hour\?aggregate=1&limit=170/.test(lastUrl(/ohlcv/)));
   check('7D → 1h candles requested with limit 170', /ohlcv\/hour\?aggregate=1&limit=170/.test(lastUrl(/ohlcv/)), lastUrl(/ohlcv/));
   check('7D offers 15m / 1h / 4h', (await ivOf()) === '15m,1h,4h', await ivOf());
   await until(async () => (await mainSeries(p))?.n >= 168);
   check('7D chart holds ~168 hourly candles', (await mainSeries(p))?.n >= 168 && (await mainSeries(p))?.n <= 170, String((await mainSeries(p))?.n));
 
-  await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^30D$/ }).click();
+  await pickRange('30D');
   await until(async () => /ohlcv\/hour\?aggregate=4&limit=182/.test(lastUrl(/ohlcv/)));
   check('30D → 4h candles requested with limit 182', /ohlcv\/hour\?aggregate=4&limit=182/.test(lastUrl(/ohlcv/)), lastUrl(/ohlcv/));
   await until(async () => (await mainSeries(p))?.n >= 180);
 
-  await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^1H$/ }).click();
+  await pickRange('1H');
   await until(async () => /ohlcv\/minute\?aggregate=1&limit=62/.test(lastUrl(/ohlcv/)));
   check('1H → 1m candles requested with limit 62', /ohlcv\/minute\?aggregate=1&limit=62/.test(lastUrl(/ohlcv/)), lastUrl(/ohlcv/));
   check('1H offers 1m / 5m', (await ivOf()) === '1m,5m', await ivOf());
 
-  // independent interval per range
-  await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^24H$/ }).click();
-  await p.locator('.chart-panel .seg').nth(1).locator('button', { hasText: /^1h$/ }).click();
+  // All: from the coin's creation; the button names the age
+  const allLabel = rangeBtns[rangeBtns.length - 1];
+  await openTf();
+  await p.locator('.tf-menu .tf-grid').nth(0).locator('button.tf-all').click();
+  check('All range loads candles back to the coin\'s creation', await until(async () => /All/.test(await p.locator('.chart-meta').innerText()) && (await mainSeries(p))?.n > 12, 20000), (await p.locator('.chart-meta').innerText()).split('\n')[0]);
+  check('timeframe button shows the All label', (await p.locator('.tf-btn').innerText()).includes(allLabel.replace(/^All · /, '')), await p.locator('.tf-btn').innerText());
+
+  // independent interval per range; choosing a candle size closes the menu
+  await pickRange('24H');
+  await pickIv('1h');
+  check('choosing a candle size closes the timeframe menu', (await p.locator('.tf-menu').count()) === 0);
   await until(async () => /ohlcv\/hour\?aggregate=1&limit=26/.test(lastUrl(/ohlcv/)));
   check('24H with 1h interval → limit 26', /ohlcv\/hour\?aggregate=1&limit=26/.test(lastUrl(/ohlcv/)), lastUrl(/ohlcv/));
-  await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^7D$/ }).click();
-  await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^24H$/ }).click();
-  const active = await p.locator('.chart-panel .seg').nth(1).locator('button.on').innerText();
+  await pickRange('7D');
+  await pickRange('24H');
+  const active = await p.locator('.tf-menu .tf-grid').nth(1).locator('button.on').innerText();
   check('each range remembers its own interval (24H stays on 1h)', active === '1h', active);
+  await p.keyboard.press('Escape');
+  check('Escape closes the timeframe menu', (await p.locator('.tf-menu').count()) === 0);
+  // Live = 1H of 1m candles
+  await p.locator('.cpill-live').click();
+  await until(async () => /ohlcv\/minute\?aggregate=1&limit=62/.test(lastUrl(/ohlcv/)));
+  check('Live button switches to 1H · 1m and is highlighted', /1H/.test(await p.locator('.tf-btn').innerText()) && (await p.locator('.cpill-live.on').count()) === 1);
+  await pickRange('24H'); await p.keyboard.press('Escape');
 
+  await p.locator('.chart-gear').click();
   // chart types
   for (const [label, kind] of [['Line', 'line'], ['Area', 'area'], ['Candles', 'candle']]) {
-    await p.locator('.chart-panel .seg').nth(2).locator('button', { hasText: new RegExp('^' + label + '$') }).click();
+    await p.locator('.chart-settings .seg').nth(0).locator('button', { hasText: new RegExp('^' + label + '$') }).click();
     const okType = await until(async () => (await mainSeries(p))?.kind === kind && (await mainSeries(p))?.n > 5);
     const s = await mainSeries(p);
     check(`chart type ${label}: ${kind} series with data`, okType && (kind === 'candle' ? 'open' in s.first : 'value' in s.first && !('open' in s.first)), `kind=${s?.kind} n=${s?.n}`);
   }
   // price/mcap axis (non-majors default to market cap, as before)
-  await p.locator('.chart-panel .seg').nth(3).locator('button', { hasText: /^Price$/ }).click();
+  await p.locator('.chart-settings .seg').nth(1).locator('button', { hasText: /^Price$/ }).click();
   await sleep(500);
   const priceClose = (await mainSeries(p)).last.close;
-  await p.locator('.chart-panel .seg').nth(3).locator('button', { hasText: /^MCap$/ }).click();
+  await p.locator('.chart-settings .seg').nth(1).locator('button', { hasText: /^MCap$/ }).click();
   await sleep(500);
   const mcapClose = (await mainSeries(p)).last.close;
   check('MCap axis multiplies prices by supply', mcapClose > priceClose * 1000, `${priceClose} → ${mcapClose}`);

@@ -111,19 +111,32 @@ const mainSeries = (p) => p.evaluate(() => { const c = window.__lwc.charts.filte
   await p.locator('.coin-row').first().click();
   check('chart draws candles from Worker data', await until(async () => (await mainSeries(p))?.n > 10), JSON.stringify(await mainSeries(p)));
   const combos = { '1H': ['1m', '5m'], '4H': ['1m', '5m', '15m'], '24H': ['5m', '15m', '1h'], '7D': ['15m', '1h', '4h'], '30D': ['1h', '4h', '1d'] };
-  await p.locator('.chart-gear').click();
+  const openTf = async () => { if (!(await p.locator('.tf-menu').count())) await p.locator('.tf-btn').click(); };
+  let shapes = 1; // All
   for (const [r, ivs] of Object.entries(combos)) {
-    await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: new RegExp('^' + r + '$') }).click();
+    await openTf();
+    // ranges longer than the coin's age are not offered (All covers them)
+    const rb = p.locator('.tf-menu .tf-grid').nth(0).locator('button', { hasText: new RegExp('^' + r + '$') });
+    if (!(await rb.count())) continue;
+    await rb.click();
+    shapes += ivs.length;
     for (const iv of ivs) {
       const before = w.log.filter((l) => /ohlcv/.test(l.path)).length;
-      await p.locator('.chart-panel .seg').nth(1).locator('button', { hasText: new RegExp('^' + iv + '$') }).click();
+      await openTf();
+      await p.locator('.tf-menu .tf-grid').nth(1).locator('button', { hasText: new RegExp('^' + iv + '$') }).click();
       await until(async () => w.log.filter((l) => /ohlcv/.test(l.path)).length > before, 6000);
     }
   }
+  // All (since creation) is also a query shape the Worker must accept
+  await openTf();
+  const beforeAll = w.log.filter((l) => /ohlcv/.test(l.path)).length;
+  await p.locator('.tf-menu .tf-grid').nth(0).locator('button.tf-all').click();
+  await p.keyboard.press('Escape');
+  await until(async () => w.log.filter((l) => /ohlcv/.test(l.path)).length > beforeAll, 10000);
   await sleep(1500);
   const ohlcv = w.log.filter((l) => /ohlcv/.test(l.path));
   const kinds = new Set(ohlcv.map((l) => l.path.replace(/.*ohlcv\//, '')));
-  check('all range × interval combinations were requested through the Worker', kinds.size >= 14, `${kinds.size} of 14 distinct period/aggregate/limit shapes`);
+  check('all range × interval combinations were requested through the Worker', kinds.size >= shapes, `${kinds.size} of ${shapes} distinct period/aggregate/limit shapes`);
   check('…and every one of them passed the Worker’s query validation', ohlcv.every((l) => l.status === 200), ohlcv.filter((l) => l.status !== 200).map((l) => l.status + ' ' + l.path).join(' | '));
   check('chart still shows data after the walk', (await mainSeries(p))?.n > 5);
 
@@ -231,10 +244,10 @@ const mainSeries = (p) => p.evaluate(() => { const c = window.__lwc.charts.filte
   check('phone: coin page has no horizontal scroll', await noScroll());
   const boxW = await p.locator('[data-testid=lw-box]').evaluate((e) => e.getBoundingClientRect().width);
   check('phone: chart fits the screen width', boxW > 300 && boxW <= 390, String(boxW));
-  await p.locator('.chart-gear').tap();
-  const heights = await p.locator('.chart-panel .seg button').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
-  check('phone: chart control buttons are at least 32px tall (tappable)', heights.length > 10 && Math.min(...heights) >= 32, `min ${Math.min(...heights)}`);
-  await p.locator('.chart-panel .seg').nth(0).locator('button', { hasText: /^7D$/ }).tap();
+  await p.locator('.tf-btn').tap();
+  const heights = await p.locator('.tf-menu button, .chart-pills > button').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
+  check('phone: chart control buttons are at least 32px tall (tappable)', heights.length > 8 && Math.min(...heights) >= 32, `min ${Math.min(...heights)}`);
+  await p.locator('.tf-menu .tf-grid').nth(0).locator('button', { hasText: /^7D$/ }).tap();
   check('phone: changing range reloads candles through the Worker', await until(async () => w.log.some((l) => /ohlcv\/hour\?aggregate=1&limit=170/.test(l.path) && l.status === 200), 8000));
   await p.screenshot({ path: `${SHOTS}/12-proxy-phone-coin.png`, fullPage: true });
   check('phone: coin page still has no horizontal scroll after the change', await noScroll());

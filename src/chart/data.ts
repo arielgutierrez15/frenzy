@@ -7,8 +7,8 @@ import type { Candle, Coin, State } from '../types';
 import { ensurePool, getJSON, poolIssues } from '../engine';
 import { parseOhlcv, sameToken } from '../providers/adapters';
 
-export type RangeId = '1H' | '4H' | '24H' | '7D' | '30D';
-export type IntervalId = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
+export type RangeId = '1H' | '4H' | '24H' | '7D' | '30D' | '90D' | '180D' | '1Y' | 'ALL';
+export type IntervalId = '1m' | '5m' | '15m' | '1h' | '4h' | '12h' | '1d';
 export type ChartType = 'candles' | 'line' | 'area';
 
 export interface IntervalSpec { id: IntervalId; label: string; period: 'minute' | 'hour' | 'day'; agg: number; ms: number }
@@ -18,6 +18,7 @@ export const INTERVALS: Record<IntervalId, IntervalSpec> = {
   '15m': { id: '15m', label: '15m', period: 'minute', agg: 15, ms: 900_000 },
   '1h': { id: '1h', label: '1h', period: 'hour', agg: 1, ms: 3_600_000 },
   '4h': { id: '4h', label: '4h', period: 'hour', agg: 4, ms: 14_400_000 },
+  '12h': { id: '12h', label: '12h', period: 'hour', agg: 12, ms: 43_200_000 },
   '1d': { id: '1d', label: '1d', period: 'day', agg: 1, ms: 86_400_000 },
 };
 
@@ -29,7 +30,50 @@ export const RANGES: RangeSpec[] = [
   { id: '7D', label: '7D', ms: 7 * 86_400_000, intervals: ['15m', '1h', '4h'], def: '1h' },
   { id: '30D', label: '30D', ms: 30 * 86_400_000, intervals: ['1h', '4h', '1d'], def: '4h' },
 ];
-export const rangeOf = (id: RangeId) => RANGES.find((r) => r.id === id) || RANGES[2];
+/** longer spans; offered only when the coin is older than the span (a younger coin uses ALL instead) */
+export const LONG_RANGES: RangeSpec[] = [
+  { id: '90D', label: '90D', ms: 90 * 86_400_000, intervals: ['4h', '12h', '1d'], def: '12h' },
+  { id: '180D', label: '180D', ms: 180 * 86_400_000, intervals: ['4h', '12h', '1d'], def: '1d' },
+  { id: '1Y', label: '1Y', ms: 365 * 86_400_000, intervals: ['12h', '1d'], def: '1d' },
+];
+const ALL_IDS: IntervalId[] = ['1m', '5m', '15m', '1h', '4h', '12h', '1d'];
+/** history fetched for ALL when the coin's age is unknown, and the most pages fetched for very old coins */
+const ALL_UNKNOWN_MS = 1000 * 86_400_000;
+export const ALL_MAX_PAGES = 3;
+
+/** "300d", "14h", "2.4y": how long ago the coin was created, for the All button */
+export function spanLabel(ms: number): string {
+  const h = ms / 3_600_000, d = ms / 86_400_000;
+  if (h < 1) return `${Math.max(1, Math.round(ms / 60_000))}m`;
+  if (d < 1) return `${Math.round(h)}h`;
+  if (d < 1000) return `${Math.round(d)}d`;
+  return `${(d / 365).toFixed(1)}y`;
+}
+
+/**
+ * The ALL range: from the coin's creation to now. Candle intervals are the ones that cover that span in at most
+ * ALL_MAX_PAGES provider pages and still give a readable chart; the default aims for about 300 candles.
+ */
+export function allRange(createdAt: number | undefined, now = Date.now()): RangeSpec {
+  const age = createdAt && createdAt < now ? Math.max(now - createdAt, 30 * 60_000) : 0;
+  const ms = age || ALL_UNKNOWN_MS;
+  const fits = (i: IntervalId) => Math.ceil(ms / INTERVALS[i].ms) <= MAX_CANDLES * (i === '1d' ? ALL_MAX_PAGES : 1);
+  let ok = ALL_IDS.filter((i) => fits(i) && ms / INTERVALS[i].ms >= 12);
+  if (!ok.length) ok = [ALL_IDS.find(fits) || '1d'];
+  // at most four choices: the finest ones are pointless once a coin is weeks old
+  if (ok.length > 4) ok = ok.slice(ok.length - 4);
+  const def = ok.reduce((a, b) => (Math.abs(Math.log(ms / INTERVALS[b].ms / 300)) < Math.abs(Math.log(ms / INTERVALS[a].ms / 300)) ? b : a), ok[0]);
+  return { id: 'ALL', label: age ? `All · ${spanLabel(age)}` : 'All', ms, intervals: ok, def };
+}
+
+/** ranges this coin can show: the fixed ones shorter than its age, then ALL (since creation) */
+export function rangesFor(createdAt: number | undefined, now = Date.now()): RangeSpec[] {
+  const age = createdAt && createdAt < now ? now - createdAt : Infinity;
+  return [...RANGES, ...LONG_RANGES].filter((r) => r.ms < age * 0.9).concat(allRange(createdAt, now));
+}
+
+export const rangeOf = (id: RangeId, createdAt?: number, now = Date.now()): RangeSpec =>
+  (id === 'ALL' ? allRange(createdAt, now) : RANGES.find((r) => r.id === id) || LONG_RANGES.find((r) => r.id === id) || RANGES[2]);
 
 /** GeckoTerminal returns at most 1000 candles per call. */
 export const MAX_CANDLES = 1000;
@@ -74,25 +118,36 @@ export async function loadCandleSet(st: State, c: Coin, rangeId: RangeId, interv
   await ensurePool(st, c);
   const pool = c.pairAddress;
   if (!pool) return { ok: false, error: poolIssues[c.id] ? poolIssues[c.id] : st.sources['gt-pools']?.ok === false ? `No pool found (${st.sources['gt-pools']?.error})` : 'No trading pool found for this coin yet' };
-  const range = rangeOf(rangeId);
+  const now = o.now ?? Date.now();
+  const range = rangeOf(rangeId, c.createdAt, now);
   const iv = INTERVALS[validInterval(range, intervalId)];
-  const n = candlesNeeded(range, iv);
-  const path = `/networks/${GT_NETWORK[c.chain]}/pools/${pool}/ohlcv/${iv.period}?aggregate=${iv.agg}&limit=${n}&currency=usd&token=base`;
-  const r = await getJSON(st, 'gt-ohlcv', path, { validate: parseOhlcv, prio: o.prio ?? 0, force: o.force, ttlMs: cacheTtl(iv) });
+  const want = Math.ceil(range.ms / iv.ms) + 2;
+  const url = (limit: number, before?: number) => `/networks/${GT_NETWORK[c.chain]}/pools/${pool}/ohlcv/${iv.period}?aggregate=${iv.agg}&limit=${limit}&currency=usd&token=base${before ? `&before_timestamp=${before}` : ''}`;
+  const r = await getJSON(st, 'gt-ohlcv', url(Math.min(MAX_CANDLES, want)), { validate: parseOhlcv, prio: o.prio ?? 0, force: o.force, ttlMs: cacheTtl(iv) });
   const src = st.sources['gt-ohlcv'];
   if (!r) return { ok: false, error: src?.error || 'GeckoTerminal returned no candles' };
   // never chart another token (or the quote side of the pool) under this coin's name
   if (r.baseAddress && !sameToken(c.chain, r.baseAddress, c.address)) {
     return { ok: false, error: `Chart refused: pool ${pool.slice(0, 6)}… is priced in another token (${r.baseAddress.slice(0, 6)}…), not ${c.symbol}` };
   }
-  const now = o.now ?? Date.now();
-  const cutoff = now - range.ms - iv.ms;
-  const candles = r.candles.filter((k) => k.t >= cutoff);
+  let all = r.candles;
+  let dropped = r.dropped, suspicious = r.suspicious;
+  // ALL on an old coin: page further back (older pages change rarely, so they are cached long)
+  for (let page = 1; range.id === 'ALL' && page < ALL_MAX_PAGES && all.length >= MAX_CANDLES * page && want > all.length; page++) {
+    const before = Math.floor(all[0].t / 1000);
+    const more = await getJSON(st, 'gt-ohlcv', url(MAX_CANDLES, before), { validate: parseOhlcv, prio: 2, ttlMs: 30 * 60_000 });
+    if (!more || !more.candles.length) break;
+    const older = more.candles.filter((k) => k.t < all[0].t);
+    if (!older.length) break;
+    all = [...older, ...all]; dropped += more.dropped; suspicious += more.suspicious;
+  }
+  const cutoff = range.id === 'ALL' ? -Infinity : now - range.ms - iv.ms;
+  const candles = all.filter((k) => k.t >= cutoff);
   if (candles.length === 0) return { ok: false, error: 'No trades in this pool during the selected range' };
   const set: CandleSet = {
     coinId: c.id, pool, range: range.id, interval: iv.id, candles, fetchedAt: src?.at ?? now, stale: !!src?.stale,
-    dropped: r.dropped, suspicious: r.suspicious,
-    partial: candles[0].t > now - range.ms + 2 * iv.ms,
+    dropped, suspicious,
+    partial: range.id !== 'ALL' && candles[0].t > now - range.ms + 2 * iv.ms,
     coverageMs: candles[candles.length - 1].t - candles[0].t,
     baseVerified: !!r.baseAddress,
   };

@@ -64,7 +64,8 @@ export const makeMock = (opts = {}) => {
         const lim = Number(u.searchParams.get('limit') || 100), agg = Number(u.searchParams.get('aggregate') || 1);
         const unit = u.pathname.endsWith('minute') ? 60 : u.pathname.endsWith('hour') ? 3600 : 86400;
         const step = unit * agg;
-        const now = Math.floor(Date.now() / 1000 / step) * step;
+        const bt = Number(u.searchParams.get('before_timestamp') || 0);
+        const now = Math.floor((bt ? bt - 1 : Date.now() / 1000) / step) * step;
         const pool = u.pathname.split('/pools/')[1].split('/')[0];
         const s = (coinForPool(pool)?.p || 1) * m.boost;
         let p = 1;
