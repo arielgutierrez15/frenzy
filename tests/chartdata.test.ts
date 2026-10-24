@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RANGES, INTERVALS, candlesNeeded, validInterval, applyLiveTick, priceGap, MAX_CANDLES, rangeOf, TICK_MAX_AGE_MS } from '../src/chart/data';
+import { RANGES, LONG_RANGES, INTERVALS, candlesNeeded, validInterval, applyLiveTick, priceGap, MAX_CANDLES, rangeOf, rangesFor, allRange, spanLabel, ALL_MAX_PAGES, TICK_MAX_AGE_MS } from '../src/chart/data';
 import type { Candle } from '../src/types';
 
 const MIN = 60_000;
@@ -23,6 +23,36 @@ test('the five ranges are 1H, 4H, 24H, 7D and 30D with independent interval choi
   assert.deepEqual(rangeOf('30D').intervals, ['1h', '4h', '1d']);
   assert.equal(validInterval(rangeOf('1H'), '1d'), '1m', 'an interval the range does not offer falls back to its default');
   assert.equal(validInterval(rangeOf('7D'), '4h'), '4h');
+});
+
+test('long ranges fit in one request; All covers the coin from creation within the page budget', () => {
+  for (const r of LONG_RANGES) for (const i of r.intervals) {
+    const n = candlesNeeded(r, INTERVALS[i]);
+    assert.ok(n <= MAX_CANDLES && n >= 12, `${r.id}/${i} needs ${n}`);
+  }
+  const now = 1_800_000_000_000, DAY = 86_400_000;
+  for (const age of [40 * 60_000, 5 * 3_600_000, 3 * DAY, 300 * DAY, 2000 * DAY]) {
+    const a = allRange(now - age, now);
+    assert.equal(a.id, 'ALL');
+    assert.ok(a.intervals.includes(a.def));
+    assert.ok(a.intervals.length >= 1 && a.intervals.length <= 4, `${age}: ${a.intervals}`);
+    for (const i of a.intervals) {
+      const n = Math.ceil(a.ms / INTERVALS[i].ms);
+      assert.ok(n <= MAX_CANDLES * (i === '1d' ? ALL_MAX_PAGES : 1), `${age}/${i} needs ${n}`);
+    }
+  }
+  assert.equal(allRange(now - 300 * DAY, now).label, 'All · 300d');
+  assert.equal(allRange(now - 300 * DAY, now).def, '1d');
+  assert.equal(allRange(undefined, now).label, 'All', 'unknown age: no number shown');
+  assert.deepEqual([spanLabel(14 * 3_600_000), spanLabel(45 * 60_000), spanLabel(1200 * DAY)], ['14h', '45m', '3.3y']);
+});
+
+test('a coin only gets ranges shorter than its age, then All', () => {
+  const now = 1_800_000_000_000, DAY = 86_400_000;
+  assert.deepEqual(rangesFor(now - 3 * 3_600_000, now).map((r) => r.id), ['1H', 'ALL']);
+  assert.deepEqual(rangesFor(now - 300 * DAY, now).map((r) => r.id), ['1H', '4H', '24H', '7D', '30D', '90D', '180D', 'ALL']);
+  assert.deepEqual(rangesFor(undefined, now).map((r) => r.id), ['1H', '4H', '24H', '7D', '30D', '90D', '180D', '1Y', 'ALL']);
+  assert.equal(rangeOf('90D').id, '90D');
 });
 
 test('live tick moves the open candle: close follows the price, wicks widen', () => {

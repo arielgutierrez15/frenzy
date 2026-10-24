@@ -442,7 +442,9 @@ export async function ensurePool(st: State, c: Coin) {
   if (!top && j.data.length) poolIssues[c.id] = 'GeckoTerminal only lists pools where this token is the quote side, so there is no compatible chart';
   else delete poolIssues[c.id];
   const addr = top?.attributes?.address;
-  if (addr) upsert(st, { chain: c.chain, address: c.address, pairAddress: addr, dexId: c.dexId ?? top?.relationships?.dex?.data?.id?.replace('pump-fun', 'pumpfun') });
+  // the pool's creation time is the best launch time we have when no other source reported one (the chart's All range uses it)
+  const born = c.createdAt ? undefined : Date.parse(top?.attributes?.pool_created_at) || undefined;
+  if (addr) upsert(st, { chain: c.chain, address: c.address, pairAddress: addr, dexId: c.dexId ?? top?.relationships?.dex?.data?.id?.replace('pump-fun', 'pumpfun'), ...(born ? { createdAt: born } : {}) });
 }
 
 /**
