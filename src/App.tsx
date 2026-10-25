@@ -67,6 +67,7 @@ export default function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const mainRef = useRef<HTMLElement>(null);
+  const topbarRef = useRef<HTMLElement>(null);
 
   const ses = useSession();
   const counts = useSocialCounts();
@@ -117,6 +118,27 @@ export default function App() {
   const gated = ses.status === 'checking' || ses.status === 'signed-out' || ses.status === 'incomplete';
   const canBack = !gated && (stack.length > 1 || ['promote', 'admin', 'me', 'leaders'].includes(route.tab));
   useEffect(() => syncBackButton(canBack, () => { haptic.tap(); if (stack.length > 1) nav.back(); else nav.go('home'); }), [canBack, stack.length, nav]);
+  // phone top bar: slides away while scrolling down, comes back as soon as you scroll up (always shown near the top
+  // and while you're typing in its search). Toggles a class directly so scrolling never re-renders the app.
+  useEffect(() => {
+    const bar = topbarRef.current;
+    if (!bar) return;
+    let last = Math.max(0, window.scrollY), hidden = false, raf = 0;
+    const set = (h: boolean) => { if (h !== hidden) { hidden = h; bar.classList.toggle('topbar-hidden', h); } };
+    const update = () => {
+      raf = 0;
+      const y = Math.max(0, window.scrollY), dy = y - last;
+      if (y <= bar.offsetHeight || bar.contains(document.activeElement)) { set(false); last = y; return; }
+      if (Math.abs(dy) < 6) return; // ignore tiny jitters
+      set(dy > 0);
+      last = y;
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    const onFocus = () => set(false);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    bar.addEventListener('focusin', onFocus);
+    return () => { window.removeEventListener('scroll', onScroll); bar.removeEventListener('focusin', onFocus); if (raf) cancelAnimationFrame(raf); bar.classList.remove('topbar-hidden'); };
+  }, [gated]);
   // Telegram: t.me/<bot>?startapp=<mint> opens that coin once it has loaded
   const startRef = useRef<{ mint: string | null; at: number; done: boolean }>({ mint: startMint(), at: Date.now(), done: false });
   useEffect(() => {
@@ -177,7 +199,7 @@ export default function App() {
           <SourceBadge />
         </aside>
 
-        <header className="topbar">
+        <header className="topbar" ref={topbarRef}>
           <button className="brand" onClick={() => nav.go('home')} aria-label="BAGZ home"><Wordmark /></button>
           <span className="grow" />
           <button className="topbar-cash" onClick={() => nav.go('wallet')}>
@@ -187,7 +209,7 @@ export default function App() {
           <button className="icon-btn bell" aria-label={`Alerts, ${unread} unread`} onClick={() => setBellOpen((b) => !b)}>
             <Icon.bell size={20} />{unread > 0 && <span className="dot-count num">{unread > 9 ? '9+' : unread}</span>}
           </button>
-          {ses.user && <button className="bare topbar-me" onClick={() => nav.go('me')} aria-label="Your profile"><UserAvatar u={ses.user} size={34} /></button>}
+          {ses.user && <button className="bare topbar-me" onClick={() => nav.go('me')} aria-label="Your profile"><UserAvatar u={ses.user} size={30} /></button>}
           <div className="topbar-search"><SearchBar /></div>
         </header>
 
