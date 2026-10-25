@@ -58,7 +58,7 @@ Settings → Pages → Deploy from a branch → `main` → `/docs`. The site is 
 2. **Config:** in `worker/wrangler.toml` set `name` to your Worker's exact name, and `database_name` / `database_id` to your D1 database (shown on its page). Commit.
 3. **Connect the repo:** Workers & Pages → your Worker → Settings → Build → connect `arielgutierrez15/frenzy`, branch `main`, root directory `worker`, deploy command `npx wrangler deploy`. Every push to `main` then redeploys the Worker.
 4. **Secrets:** Worker → Settings → Variables and Secrets → add `JUPITER_API_KEY`, `HELIUS_API_KEY`, `ADMIN_SESSION_SECRET` (32+ random characters), `ANALYTICS_SALT`, `PROBE_TOKEN` as **Secret** type.
-5. **Point the site at it:** rebuild with `BAGZ_PROXY_URL=https://<worker>.<you>.workers.dev node build.mjs` and commit `docs/` (or open the site once with `?proxy=https://<worker>.<you>.workers.dev`).
+5. **Point the site at it:** rebuild with `BAGZ_PROXY_URL=https://<worker>.<you>.workers.dev node build.mjs` and commit `docs/`. (The `?proxy=` link override only works for a Worker on your own computer, or a page opened from it; on the real site it is ignored so a shared link can't redirect people to another server.)
 
 The terminal route below does the same thing.
 
@@ -83,7 +83,7 @@ The site keeps working without it (calls go direct from the browser, with the li
    npx tsx scripts/probe-worker.ts https://bagz-proxy.<you>.workers.dev --token <PROBE_TOKEN>
    ```
    It checks CORS from your origin, refusal of other origins and of tokenless scripts, then calls each endpoint and parses the answer with the app's own validators. It also prints Jupiter's real `/order` field names. FAIL = do not connect yet. pump.fun only warns.
-7. Connect: open the site with `?proxy=https://bagz-proxy.<you>.workers.dev` to try it (remembered in that browser; `?proxy=off` clears it). When the Data sources panel looks right, rebuild with `BAGZ_PROXY_URL=https://… node build.mjs` and commit `docs/`.
+7. Connect: to try it first, run the site locally (`npm run dev`) and open `http://localhost:3000/?proxy=https://bagz-proxy.<you>.workers.dev` (remembered in that browser; `?proxy=off` clears it). The real site ignores `?proxy=` unless it points at your own computer. When the Data sources panel looks right, rebuild with `BAGZ_PROXY_URL=https://… node build.mjs` and commit `docs/`.
 
 ### What the Worker enforces
 
