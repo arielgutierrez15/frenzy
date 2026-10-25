@@ -6,13 +6,13 @@ import { getServerConfig, adminChallenge, adminSession, adminPromotions, adminDe
 import { short } from '../engine';
 import { useSession } from '../social/session';
 import { OverviewPanel, AccountsPanel, LogPanel } from '../admin/Console';
-import { SwitchesPanel, RevenuePanel, BlocklistPanel, UserStatsPanel, VaultPanel, AuditPanel } from '../admin/Controls';
+import { SwitchesPanel, FeeSetupPanel, RevenuePanel, BlocklistPanel, UserStatsPanel, VaultPanel, AuditPanel } from '../admin/Controls';
 
 type Session = { token: string; wallet: string; expiresAt: number };
 /** the console's sections, grouped so related tools sit together */
 const GROUPS = [
   { label: 'Insights', items: [['overview', 'Overview'], ['users', 'Users'], ['revenue', 'Revenue']] },
-  { label: 'Controls', items: [['switches', 'Kill switches'], ['boost', 'BOOST queue'], ['blocklist', 'Blocklist'], ['vault', 'Vault']] },
+  { label: 'Controls', items: [['switches', 'Kill switches'], ['fees', 'Fee accounts'], ['boost', 'BOOST queue'], ['blocklist', 'Blocklist'], ['vault', 'Vault']] },
   { label: 'Records', items: [['transactions', 'Transactions'], ['log', 'Activity'], ['audit', 'Audit log']] },
 ] as const;
 type Section = (typeof GROUPS)[number]['items'][number][0];
@@ -112,6 +112,7 @@ export function AdminView() {
           {section === 'users' && <div className="admin-stack"><UserStatsPanel token={session.token} onAuthError={onAuthError} /><AccountsPanel token={session.token} onAuthError={onAuthError} /></div>}
           {section === 'revenue' && <RevenuePanel token={session.token} onAuthError={onAuthError} />}
           {section === 'switches' && <SwitchesPanel token={session.token} onAuthError={onAuthError} onChange={setSwitches} />}
+          {section === 'fees' && <FeeSetupPanel token={session.token} onAuthError={onAuthError} adminWallet={session.wallet} />}
           {section === 'boost' && <BoostReview session={session} onAuthError={onAuthError} onCounts={(c) => setPending(c.pending_review ?? 0)} />}
           {section === 'blocklist' && <BlocklistPanel token={session.token} onAuthError={onAuthError} />}
           {section === 'vault' && <VaultPanel token={session.token} onAuthError={onAuthError} />}

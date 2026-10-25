@@ -133,7 +133,7 @@ npx wrangler d1 migrations apply <database_name> --remote
 npx wrangler deploy
 npx tsx ../scripts/probe-worker.ts https://bagz-api.<you>.workers.dev --token <PROBE_TOKEN>
 ```
-The fee token accounts must exist before swaps are enabled (create the wSOL and USDC associated token accounts for `FEE_WALLET` in any wallet or with `spl-token create-account`).
+The fee token accounts must exist before swaps are enabled. Easiest: open `#admin` → **Controls → Fee accounts**, signed in with the admin wallet. It checks each receiving account on Solana (wSOL fee, USDC fee, BOOST USDC) and, if any are missing, **Create them now** builds one transaction the admin wallet signs. It only uses the token program's CreateIdempotent instruction for the standard accounts of the configured wallets (about 0.002 SOL refundable deposit each); the Worker refuses any other instruction, any other payer or signer, and any non-standard address. It does not switch swaps or BOOST payments on. Tested by `tests/api-feesetup.test.ts` (7 tests) and `npm run test:fees` (13 browser checks). You can still create them by hand in any wallet or with `spl-token create-account`.
 
 ### Before switching anything on
 1. Security review of `worker/api.js` and `worker/solana.js`, and a compliance/legal review of charging swap fees and selling ad placements where you operate.
