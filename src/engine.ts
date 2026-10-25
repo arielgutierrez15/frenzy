@@ -256,9 +256,14 @@ export const SOURCE_SHORT: Record<SourceId, string> = {
 // ======================================================================
 // fetchers
 // ======================================================================
+/** Token links are set by whoever launched the token, so only plain web links are kept (no javascript:, data:, etc.). */
+export const webLink = (u: unknown): string | null => {
+  if (typeof u !== 'string' || u.length > 500) return null;
+  try { const x = new URL(u.trim()); return x.protocol === 'https:' || x.protocol === 'http:' ? x.toString() : null; } catch { return null; }
+};
 function linksFrom(arr: any[] | undefined): { type: string; url: string }[] {
   if (!Array.isArray(arr)) return [];
-  return arr.filter((l) => l && typeof l.url === 'string').map((l) => ({ type: String(l.type || l.label || 'website').toLowerCase(), url: l.url }));
+  return arr.map((l) => (l && webLink(l.url) ? { type: String(l.type || l.label || 'website').toLowerCase().slice(0, 30), url: webLink(l.url)! } : null)).filter((x): x is { type: string; url: string } => !!x);
 }
 
 async function fetchDsProfiles(st: State) {
@@ -292,7 +297,7 @@ function fromJupiter(st: State, t: any, source?: SourceId, at = Date.now()) {
   const s24 = t.stats24h || {}, s1 = t.stats1h || {}, s5 = t.stats5m || {}, s6 = t.stats6h || {};
   const a = t.audit || {};
   const links: { type: string; url: string }[] = [];
-  for (const k of ['website', 'twitter', 'telegram']) if (typeof t[k] === 'string' && t[k]) links.push({ type: k, url: t[k] });
+  for (const k of ['website', 'twitter', 'telegram']) { const u = webLink(t[k]); if (u) links.push({ type: k, url: u }); }
   const c = upsert(st, {
     chain: 'solana', address: t.id, symbol: t.symbol, name: t.name, icon: t.icon, decimals: num(t.decimals), launchpad: t.launchpad,
     mcap: num(t.mcap) ?? num(t.fdv), liq: num(t.liquidity), holders: num(t.holderCount),
@@ -352,7 +357,7 @@ async function fetchGt(st: State, id: 'gt-new' | 'gt-trending', path: string) {
 const PUMP_SUPPLY = 1_000_000_000;
 
 function fromPumpFun(st: State, t: PumpCoin, source: 'pumpfun' | 'pump-live', at = Date.now()) {
-  const links = [['website', t.website], ['twitter', t.twitter], ['telegram', t.telegram]].filter(([, u]) => typeof u === 'string' && u).map(([type, url]) => ({ type: type as string, url: url as string }));
+  const links = ([['website', t.website], ['twitter', t.twitter], ['telegram', t.telegram]] as [string, unknown][]).map(([type, u]) => ({ type, url: webLink(u) })).filter((l): l is { type: string; url: string } => !!l.url);
   const c = upsert(st, {
     chain: 'solana', address: t.mint, symbol: t.symbol, name: t.name, description: t.description, icon: t.image, launchpad: 'pump.fun',
     mcap: t.marketCapUsd, createdAt: t.createdAtMs, links: links.length ? links : undefined,
@@ -408,7 +413,7 @@ async function refreshPairs(st: State, ids: string[], o: { force?: boolean; prio
       for (const [k, p] of Object.entries(best)) {
         const c = st.coins[k];
         if (!c) continue;
-        const links = [...(p.info?.websites || []).map((w: any) => ({ type: 'website', url: w.url })), ...linksFrom(p.info?.socials)];
+        const links = [...linksFrom((p.info?.websites || []).map((w: any) => ({ type: 'website', url: w && w.url }))), ...linksFrom(p.info?.socials)];
         upsert(st, {
           chain: c.chain, address: c.address, symbol: p.baseToken.symbol, name: p.baseToken.name, icon: p.info?.imageUrl, header: p.info?.header,
           mcap: num(p.marketCap) ?? num(p.fdv), liq: num(p.liquidity?.usd), vol24: num(p.volume?.h24), vol1h: num(p.volume?.h1),

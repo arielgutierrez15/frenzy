@@ -308,3 +308,42 @@ test('API refuses other origins and scripts without an origin', async () => {
   const res2 = await handle(new Request('https://api.test/v1/config'), s.env, undefined, { fetch: s.chain.fetch, cache: null });
   assert.equal(res2.status, 403);
 });
+
+test('extra instructions from Jupiter: wrapping SOL is allowed, transfers/approvals to others are refused', async () => {
+  // @ts-ignore plain JS
+  const { associatedTokenAddress } = await import('../worker/feesetup.js');
+  const s = await setup();
+  const taker = s.taker.address;
+  const wsolAta: string = await associatedTokenAddress(taker, sol.MINTS.wsol);
+  const ix = (programId: string, accounts: [string, boolean, boolean][], data: number[]) => ({ programId, accounts: accounts.map(([pubkey, isSigner, isWritable]) => ({ pubkey, isSigner, isWritable })), data: sol.b64encode(Uint8Array.from(data)) });
+  const u32 = (n: number) => [n & 255, (n >> 8) & 255, 0, 0];
+  const lamports = [0, 225, 245, 5, 0, 0, 0, 0]; // 100,000,000
+  const wrap = [
+    ix(sol.PROGRAMS.system, [[taker, true, true], [wsolAta, false, true]], [...u32(2), ...lamports]),
+    ix(sol.PROGRAMS.token, [[wsolAta, false, true]], [17]),
+  ];
+  const unwrap = ix(sol.PROGRAMS.token, [[wsolAta, false, true], [taker, false, true], [taker, true, false]], [9]);
+  const attacker = rnd();
+  const withExtra = (extra: any[], cleanup: any = null) => (_q: URLSearchParams, def: any) => ({ ...def, setupInstructions: [...def.setupInstructions, ...extra], cleanupInstruction: cleanup });
+
+  // normal SOL wrap / unwrap around the swap
+  s.chain.opts.buildOverride = withExtra(wrap, unwrap);
+  let r = await s.call('/swap/prepare', buyBody(taker));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+
+  const refused: [string, any[], any?][] = [
+    ['SOL sent to someone else', [ix(sol.PROGRAMS.system, [[taker, true, true], [attacker, false, true]], [...u32(2), ...lamports])]],
+    ['token transfer out of the user account', [ix(sol.PROGRAMS.token, [[rnd(), false, true], [sol.MINTS.usdc, false, false], [attacker, false, true], [taker, true, false]], [12, ...lamports, 6])]],
+    ['token approval to another wallet', [ix(sol.PROGRAMS.token, [[rnd(), false, true], [attacker, false, false], [taker, true, false]], [4, ...lamports])]],
+    ['account closed to someone else', [], ix(sol.PROGRAMS.token, [[wsolAta, false, true], [attacker, false, true], [taker, true, false]], [9])],
+    ['token account created for another wallet', [ix('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL', [[taker, true, true], [rnd(), false, true], [attacker, false, false], [sol.MINTS.usdc, false, false], [sol.PROGRAMS.system, false, false], [sol.PROGRAMS.token, false, false]], [1])]],
+    ['unknown program', [ix(rnd(), [[taker, true, true]], [1, 2, 3])]],
+  ];
+  for (const [name, extra, cleanup] of refused) {
+    s.chain.opts.buildOverride = withExtra(extra, cleanup);
+    r = await s.call('/swap/prepare', buyBody(taker));
+    assert.equal(r.status, 502, `${name}: ${JSON.stringify(r.body)}`);
+    assert.match(r.body.error, /doesn't allow/, name);
+  }
+  assert.equal(s.chain.sent.length, 0);
+});

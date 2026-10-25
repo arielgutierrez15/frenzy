@@ -1,0 +1,8 @@
+# Security headers for Cloudflare Pages (bagz.pages.dev). GitHub Pages ignores this file.
+# frame-ancestors: only BAGZ itself and Telegram Web (which shows Mini Apps in a frame) may embed the page, so another
+# site can't overlay it to trick clicks (clickjacking). Telegram's phone and desktop apps don't use frames.
+/*
+  Content-Security-Policy: frame-ancestors 'self' https://web.telegram.org https://*.telegram.org
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()

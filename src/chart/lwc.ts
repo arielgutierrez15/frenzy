@@ -3,17 +3,21 @@ import type { LwcModule } from './lwc-types';
 
 /** Pinned release. The vendored copy (docs/vendor/) is tried first so the app can run without a CDN. */
 export const LWC_VERSION = '4.2.0';
-const SOURCES = [
-  './vendor/lightweight-charts.standalone.production.js',
-  `https://cdn.jsdelivr.net/npm/lightweight-charts@${LWC_VERSION}/dist/lightweight-charts.standalone.production.js`,
+// The CDN copy must match this hash (Subresource Integrity), so a tampered CDN file can't run on the BAGZ page, where it
+// could read the sign-in session. It is the sha384 of the official 4.2.0 file (same bytes as docs/vendor/).
+const CDN_SRI = 'sha384-OK7vELvjHdhUFi31JYioPIcRHTROLdcDa6ZsNWgvgLaKj+9JqhU0Ad8g4wz3CXjA';
+const SOURCES: { src: string; integrity?: string }[] = [
+  { src: './vendor/lightweight-charts.standalone.production.js' },
+  { src: `https://cdn.jsdelivr.net/npm/lightweight-charts@${LWC_VERSION}/dist/lightweight-charts.standalone.production.js`, integrity: CDN_SRI },
 ];
 
 let pending: Promise<LwcModule | null> | null = null;
 
-function inject(src: string): Promise<boolean> {
+function inject({ src, integrity }: { src: string; integrity?: string }): Promise<boolean> {
   return new Promise((resolve) => {
     const s = document.createElement('script');
     s.src = src; s.async = true;
+    if (integrity) { s.integrity = integrity; s.crossOrigin = 'anonymous'; }
     s.onload = () => resolve(true);
     s.onerror = () => { s.remove(); resolve(false); };
     document.head.appendChild(s);

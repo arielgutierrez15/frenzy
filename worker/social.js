@@ -160,7 +160,10 @@ export async function avatarResponse(ctx, id) {
 async function deleteAccount(ctx, u, b) {
   const d = db(ctx);
   const row = await one(d, 'SELECT pass_hash, pass_salt, pass_iter FROM users WHERE id = ?', u.id);
-  if (typeof b.password !== 'string' || !sameStr(await pbkdf2(b.password, row.pass_salt, row.pass_iter), row.pass_hash)) throw new ApiError(401, 'Wrong password');
+  // same limit as sign-in, so a stolen session can't be used to guess the password here
+  const key = `login:u:${u.username.toLowerCase()}`, now = ctx.now();
+  if (await throttled(d, key, 8, 15 * 60_000, now)) throw new ApiError(429, 'Too many wrong passwords. Wait 15 minutes and try again.');
+  if (typeof b.password !== 'string' || b.password.length > 128 || !sameStr(await pbkdf2(b.password, row.pass_salt, row.pass_iter), row.pass_hash)) { await bump(d, key, 15 * 60_000, now); throw new ApiError(401, 'Wrong password'); }
   const chats = await all(d, 'SELECT chat_id FROM chat_members WHERE user_id = ?', u.id);
   await deleteWallet(ctx, u.id);
   await run(d, 'DELETE FROM users WHERE id = ?', u.id);

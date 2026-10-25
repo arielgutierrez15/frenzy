@@ -276,3 +276,12 @@ test('without the database the API says accounts are unavailable', async () => {
   const r = await s.call('/v1/auth/signup', { body: { username: 'vic', password: 'password123' } });
   assert.equal(r.status, 503);
 });
+
+test('delete account: password guesses are limited like sign-in', async () => {
+  const s = setup();
+  const a = await s.user('vic');
+  for (let i = 0; i < 8; i++) assert.equal((await s.call('/v1/me/delete', { body: { password: `guess-${i}-xx` }, token: a.token })).status, 401);
+  // even the right password waits now
+  assert.equal((await s.call('/v1/me/delete', { body: { password: 'hunter22pass' }, token: a.token })).status, 429);
+  assert.equal((await s.call('/v1/me', { token: a.token })).status, 200, 'account still there');
+});

@@ -2,6 +2,7 @@
 // Flow: buy on paper → position card → sell → closed-trade card opens by itself → wallet card → save image.
 // Checks every card is a real 1200×750 PNG drawn by the app, labelled as paper trading, and that the new logos are used.
 // Usage: node tests/cards-e2e.mjs
+import { execFileSync } from 'child_process';
 import { createServer } from 'http';
 import { readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -12,7 +13,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { chromium } = await import(process.env.PLAYWRIGHT || '/opt/npm-tools/node_modules/playwright/index.mjs');
 const SHOTS = process.env.SHOTS || '/tmp/bagz-shots';
 mkdirSync(SHOTS, { recursive: true });
-const HTML = readFileSync(resolve(root, 'docs/index.html'));
+// the live page has the BAGZ server address built in; these checks use mocked providers called directly, so build a copy
+// without one (BAGZ_PAGE_OUT builds leave it empty)
+const PAGE = resolve(process.env.SHOTS || '/tmp/bagz-shots', 'bagz-direct-cards.html');
+mkdirSync(dirname(PAGE), { recursive: true });
+execFileSync('node', ['build.mjs'], { cwd: root, env: { ...process.env, BAGZ_PAGE_OUT: PAGE }, stdio: 'pipe' });
+const HTML = readFileSync(PAGE);
 const results = [], pageErrors = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
