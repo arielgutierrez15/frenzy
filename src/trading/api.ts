@@ -139,6 +139,17 @@ export interface WalletBalance { label: string; address: string; kind: string; a
 export const adminRevenue = (token: string, days: number) => apiCall<AdminRevenue>(`/admin/revenue?days=${days}`, { token });
 export const adminWallets = (token: string) => apiCall<{ at: number; accounts: WalletBalance[]; note?: string }>('/admin/revenue/wallets', { token, timeoutMs: 30_000 });
 
+/** fee account setup: are the accounts that receive swap fees and BOOST payments on Solana, and create the missing ones */
+export interface FeeAccountStatus {
+  id: 'fee_wsol' | 'fee_usdc' | 'boost_usdc'; label: string; use: string; for: 'swaps' | 'boost'; token: 'USDC' | 'wSOL';
+  address: string | null; owner: string | null; expected: string | null;
+  state: 'ready' | 'missing' | 'problem' | 'unknown' | 'not_configured'; creatable?: boolean; balance?: string | null; detail: string; sharedWith?: string;
+}
+export interface FeeSetup { at: number; accounts: FeeAccountStatus[]; swapsReady: boolean; boostReady: boolean; missing: number; rentPerAccountSol?: number; testCopy?: boolean; note?: string }
+export const adminFeeSetup = (token: string) => apiCall<FeeSetup>('/admin/fee-setup', { token, timeoutMs: 30_000 });
+export const adminFeeSetupBuild = (token: string) => apiCall<{ transaction: string; creates: { id: string; label: string; address: string; token: string }[]; costSol: number; note: string }>('/admin/fee-setup/build', { body: {}, token, timeoutMs: 30_000 });
+export const adminFeeSetupSubmit = (token: string, signedTransaction: string) => apiCall<{ signature: string; status: string }>('/admin/fee-setup/submit', { body: { signedTransaction }, token, timeoutMs: 30_000 });
+
 export interface BlockedToken { mint: string; symbol: string | null; reason: string; createdAt: number; createdBy: string }
 export interface Blocklist { ready: boolean; migration?: string; tokens: BlockedToken[]; affectedBoosts?: { id: string; symbol: string | null; status: string }[] }
 export const adminBlocklist = (token: string) => apiCall<Blocklist>('/admin/blocklist', { token });

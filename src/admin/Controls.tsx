@@ -5,14 +5,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   adminSwitches, adminSetSwitch, adminRevenue, adminWallets, adminBlocklist, adminBlockToken, adminUnblockToken, adminUserStats,
-  adminVault, adminSetCard, adminAdjustCoins, adminSetRewards, adminAudit,
-  type Switches, type AdminRevenue, type WalletBalance, type Blocklist, type AdminUserStats, type AdminVault, type AdminCard, type AuditEntry,
+  adminVault, adminSetCard, adminAdjustCoins, adminSetRewards, adminAudit, adminFeeSetup, adminFeeSetupBuild, adminFeeSetupSubmit,
+  type Switches, type FeeSetup, type AdminRevenue, type WalletBalance, type Blocklist, type AdminUserStats, type AdminVault, type AdminCard, type AuditEntry,
 } from '../trading/api';
 import { Kpi, Bars, downloadCsv } from './Console';
 import { short } from '../engine';
 import { ago, pct } from '../format';
 import { demo } from '../demo/hook';
 import { refreshBlocklist } from '../store';
+import { useWallet } from '../trading/walletStore';
+import { signTransactionB64 } from '../trading/wallet';
 
 type P = { token: string; onAuthError: (e: any) => void };
 const n0 = (n: number) => n.toLocaleString('en-US');
@@ -174,6 +176,97 @@ export function RevenuePanel({ token, onAuthError }: P) {
             ))}
           </ul>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---- fee accounts ---------------------------------------------------------------------------------------------------
+const STATE_LABEL: Record<string, { text: string; tone: string }> = {
+  ready: { text: 'Ready', tone: 'up' }, missing: { text: 'Not created yet', tone: 'warn' }, problem: { text: 'Needs fixing', tone: 'down' },
+  unknown: { text: 'Couldn’t check', tone: 'muted' }, not_configured: { text: 'Not set', tone: 'muted' },
+};
+/**
+ * Are the token accounts that receive the 0.50% swap fee and BOOST payments on Solana? If not, create them with one
+ * signature from the signed-in admin wallet. Creating them moves no money except the refundable ~0.002 SOL deposit
+ * each, and does not switch swaps or BOOST payments on.
+ */
+export function FeeSetupPanel({ token, onAuthError, adminWallet }: P & { adminWallet: string }) {
+  const ws = useWallet();
+  const { data, err, setErr, loading, load } = useLoad(() => adminFeeSetup(token), [token], onAuthError);
+  const [step, setStep] = useState('');
+  const [sent, setSent] = useState<string | null>(null);
+  const live = useRef(true);
+  useEffect(() => () => { live.current = false; }, []);
+  const sameWallet = ws.conn?.account.address === adminWallet;
+
+  const create = async () => {
+    if (!ws.conn || !sameWallet) return;
+    setErr(''); setSent(null);
+    try {
+      setStep('Preparing…');
+      const b = await adminFeeSetupBuild(token);
+      setStep(`Approve in your wallet: create ${b.creates.length} account${b.creates.length === 1 ? '' : 's'} (about ${amt(b.costSol + 0.0001, 4)} SOL deposit + fee)`);
+      const signed = await signTransactionB64(ws.conn, b.transaction);
+      setStep('Sending…');
+      const r = await adminFeeSetupSubmit(token, signed);
+      setSent(r.signature);
+      // Solana usually confirms within a few seconds; re-check until everything shows ready (up to ~1 minute)
+      for (let i = 0; i < 12 && live.current; i++) {
+        setStep('Waiting for Solana to confirm…');
+        await new Promise((res) => setTimeout(res, 5000));
+        const st = await adminFeeSetup(token).catch(() => null);
+        if (st && st.missing === 0) break;
+      }
+      if (live.current) await load();
+    } catch (e: any) { if (live.current) { setErr(errText(e, 'Couldn’t create the accounts')); onAuthError(e); } }
+    finally { if (live.current) setStep(''); }
+  };
+
+  if (!data) return <div className="panel"><p className="muted small">{err || 'Checking the fee accounts on Solana…'}</p></div>;
+  if (data.testCopy) return <div className="panel"><h2 className="admin-h">Fee accounts</h2><p className="small muted">{data.note}</p></div>;
+  const anyProblem = data.accounts.some((a) => a.state === 'problem' || a.state === 'not_configured');
+  return (
+    <div className="admin-stack">
+      <div className="panel">
+        <div className="row gap-s wrap">
+          <div className="grow">
+            <h2 className="admin-h">Fee accounts</h2>
+            <p className="small muted">The accounts that receive the 0.50% swap fee and BOOST payments. They must exist on Solana before live swaps or BOOST payments are switched on. Checked {ago(data.at)} ago.</p>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading || !!step}>{loading ? 'Checking…' : 'Check again'}</button>
+        </div>
+        <div className="kpis kpis-2">
+          <Kpi label="Swap fees" value={data.swapsReady ? 'Ready' : 'Not ready'} sub="wSOL + USDC accounts" tone={data.swapsReady ? 'up' : 'down'} />
+          <Kpi label="BOOST payments" value={data.boostReady ? 'Ready' : 'Not ready'} sub="USDC account" tone={data.boostReady ? 'up' : 'down'} />
+        </div>
+        <ul className="admin-kv">
+          {data.accounts.map((a) => {
+            const st = STATE_LABEL[a.state] || STATE_LABEL.unknown;
+            return (
+              <li key={a.id}>
+                <span>
+                  <span className="small">{a.label}</span><br />
+                  <span className="small muted">{a.sharedWith ? 'Same account as the swap-fee USDC account' : a.use}</span><br />
+                  {a.address && <a className="link small" href={`https://solscan.io/account/${a.address}`} target="_blank" rel="noopener noreferrer">{short(a.address)}</a>}
+                  {a.state !== 'ready' && <><br /><span className="small muted">{a.detail}</span></>}
+                </span>
+                <b className={`small ${st.tone}`}>{st.text}{a.state === 'ready' && a.balance != null ? ` · ${a.balance} ${a.token}` : ''}</b>
+              </li>
+            );
+          })}
+        </ul>
+        {err && <p className="small warn">{err}</p>}
+        {sent && <p className="small">Sent. <a className="link" href={`https://solscan.io/tx/${sent}`} target="_blank" rel="noopener noreferrer">View on Solscan</a></p>}
+        {data.missing > 0 && (
+          <div className="admin-callout small">
+            <p><b>{data.missing} account{data.missing === 1 ? '' : 's'} to create.</b> Your admin wallet pays a refundable deposit of about {amt((data.rentPerAccountSol || 0.00204) * data.missing, 4)} SOL plus a tiny network fee. Nothing else moves, and swaps stay switched off.</p>
+            {!sameWallet && <p className="warn">Connect the admin wallet you signed in with ({short(adminWallet)}) to continue.</p>}
+            <button className="btn btn-accent" onClick={create} disabled={!sameWallet || !!step}>{step || `Create ${data.missing === 1 ? 'it' : 'them'} now`}</button>
+          </div>
+        )}
+        {data.missing === 0 && data.swapsReady && data.boostReady && <p className="small up">All set. Next step: the security review, then a tiny mainnet test swap.</p>}
+        {anyProblem && <p className="small muted">Accounts marked “Needs fixing” or “Not set” are never created automatically. Correct the addresses in worker/wrangler.toml and redeploy the Worker.</p>}
       </div>
     </div>
   );

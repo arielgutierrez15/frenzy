@@ -29,6 +29,7 @@ import {
   unblockToken, userStats, vaultAdmin, setCard, adjustCoins, setRewards, auditLog, publicBlocklist,
 } from './controls.js';
 import { CHALLENGES } from './vault.js';
+import { feeSetupStatus, feeSetupBuild, feeSetupSubmit } from './feesetup.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -772,6 +773,9 @@ export async function api(request, env, deps) {
   if (route('POST', /^\/admin\/switches$/)) { const who = await requireAdmin(ctx, request); return setSwitch(ctx, who, body); }
   if (route('GET', /^\/admin\/revenue$/)) { await requireAdmin(ctx, request); return revenue(ctx, url.searchParams.get('days')); }
   if (route('GET', /^\/admin\/revenue\/wallets$/)) { await requireAdmin(ctx, request); return walletBalances(ctx); }
+  if (route('GET', /^\/admin\/fee-setup$/)) { await requireAdmin(ctx, request); return feeSetupStatus(ctx); }
+  if (route('POST', /^\/admin\/fee-setup\/build$/)) { const who = await requireAdmin(ctx, request); return feeSetupBuild(ctx, who); }
+  if (route('POST', /^\/admin\/fee-setup\/submit$/)) { const who = await requireAdmin(ctx, request); return feeSetupSubmit(ctx, who, body); }
   if (route('GET', /^\/admin\/blocklist$/)) { await requireAdmin(ctx, request); return listBlocklist(ctx); }
   if (route('POST', /^\/admin\/blocklist$/)) { const who = await requireAdmin(ctx, request); return blockToken(ctx, who, body); }
   if (route('POST', /^\/admin\/blocklist\/remove$/)) { const who = await requireAdmin(ctx, request); return unblockToken(ctx, who, body); }
