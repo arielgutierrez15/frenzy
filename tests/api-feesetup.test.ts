@@ -182,3 +182,48 @@ test('separate BOOST wallet: its USDC account is checked and created too', async
   const sub = await s.call('/admin/fee-setup/submit', { signedTransaction: await walletSign(s.admin, b.body.transaction) }, token);
   assert.equal(sub.status, 200, JSON.stringify(sub.body));
 });
+
+test('RPC trouble: a broken SOLANA_RPC_URL falls back to Helius, and total failure says why', async () => {
+  const s = await setup();
+  const token = await s.signIn();
+  const real = s.chain.fetch;
+  let hosts: string[] = [];
+  const wire = (fail: (host: string) => Response | 'throw' | null) => {
+    hosts = [];
+    s.env.__fetch = async (url: string, init: any) => {
+      const host = new URL(url).host; hosts.push(host);
+      const f = fail(host);
+      if (f === 'throw') throw new TypeError('fetch failed');
+      return f || real(url, init);
+    };
+  };
+  // the Worker passes deps.fetch through; swap the chain's fetch for one that fails per host
+  (s.chain as any).fetch = (u: string, i: any) => s.env.__fetch(u, i);
+
+  // pasted without https:// and with a stray space: tidied and used
+  s.env.SOLANA_RPC_URL = ' rpc.example.com/x ';
+  wire(() => null);
+  let r = await s.call('/admin/fee-setup', undefined, token);
+  assert.equal(byId(r, 'fee_wsol').state, 'missing', JSON.stringify(r.body));
+  assert.equal(r.body.rpc, 'SOLANA_RPC_URL');
+  assert.equal(hosts[0], 'rpc.example.com');
+
+  // custom RPC unreachable → Helius answers
+  wire((h) => (h === 'rpc.example.com' ? 'throw' : null));
+  r = await s.call('/admin/fee-setup', undefined, token);
+  assert.equal(byId(r, 'fee_wsol').state, 'missing');
+  assert.equal(r.body.rpc, 'Helius (HELIUS_API_KEY)');
+
+  // Helius refuses (401) and custom down → public RPC answers
+  wire((h) => (h === 'rpc.example.com' ? 'throw' : h === 'mainnet.helius-rpc.com' ? new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32401, message: 'invalid api key' } }), { status: 401 }) : null));
+  r = await s.call('/admin/fee-setup', undefined, token);
+  assert.equal(r.body.rpc, 'public Solana RPC');
+
+  // everything down → each one named, no key leaked
+  wire(() => 'throw');
+  r = await s.call('/admin/fee-setup', undefined, token);
+  const d = byId(r, 'fee_wsol');
+  assert.equal(d.state, 'unknown');
+  assert.match(d.detail, /SOLANA_RPC_URL: fetch failed; Helius \(HELIUS_API_KEY\): fetch failed; public Solana RPC: fetch failed/);
+  assert.ok(!JSON.stringify(r.body).includes('api-key=h'));
+});

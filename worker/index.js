@@ -14,7 +14,7 @@
  * Routes:  GET /health   ·   GET|POST /p/<provider>/<path…>   with provider in jup | gt | ds | pump | rug | rpc
  *          GET|POST /v1/…   swaps with the BAGZ fee, BOOST listings, admin review (see api.js; needs the D1 binding "Db")
  */
-import { api, ApiError, publicConfig } from './api.js';
+import { api, ApiError, publicConfig, rpcUrl } from './api.js';
 import { avatarResponse } from './social.js';
 
 const VERSION = '1.2.0';
@@ -67,7 +67,7 @@ const PROVIDERS = {
     allow: [{ re: new RegExp(`^/v1/tokens/${B58}/report/summary$`), ttl: 300 }],
   },
   rpc: {
-    base: (env) => env.SOLANA_RPC_URL || (env.HELIUS_API_KEY ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(env.HELIUS_API_KEY)}` : 'https://api.mainnet-beta.solana.com'),
+    base: (env) => rpcUrl(env),
     allow: [{ re: /^$/, ttl: 60, method: 'POST', q: {}, rpc: ['getTokenLargestAccounts', 'getTokenSupply', 'getLatestBlockhash', 'getSignatureStatuses'] }],
   },
 };

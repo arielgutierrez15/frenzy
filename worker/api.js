@@ -72,10 +72,29 @@ export const database = (env) => env.Db || env.DB || null;
  * "test payment" for BOOST orders and lets any signed-in BAGZ account use the review desk. No money is involved.
  */
 export const isTestCopy = (env) => env.TEST_COPY === '1';
+/** SOLANA_RPC_URL as pasted into Cloudflare, tidied: surrounding spaces/quotes removed, https:// added if missing. */
+export function customRpcUrl(env) {
+  let s = String(env.SOLANA_RPC_URL || '').trim().replace(/^["']|["']$/g, '').trim();
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  try { const u = new URL(s); return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : ''; } catch { return ''; }
+}
+export const heliusRpcUrl = (env) => {
+  const k = String(env.HELIUS_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+  return k ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(k)}` : '';
+};
+export const PUBLIC_RPC = 'https://api.mainnet-beta.solana.com';
 export function rpcUrl(env) {
-  if (env.SOLANA_RPC_URL) return env.SOLANA_RPC_URL;
-  if (env.HELIUS_API_KEY) return `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(env.HELIUS_API_KEY)}`;
-  return 'https://api.mainnet-beta.solana.com';
+  return customRpcUrl(env) || heliusRpcUrl(env) || PUBLIC_RPC;
+}
+/** every RPC this Worker can use, best first (used where falling back is safe, e.g. fee-account checks) */
+export function rpcCandidates(env) {
+  const out = [];
+  const add = (label, url) => { if (url && !out.some((c) => c.url === url)) out.push({ label, url }); };
+  if (env.SOLANA_RPC_URL) add('SOLANA_RPC_URL', customRpcUrl(env) || 'invalid');
+  add('Helius (HELIUS_API_KEY)', heliusRpcUrl(env));
+  add('public Solana RPC', PUBLIC_RPC);
+  return out;
 }
 
 // ---- upstream helpers ---------------------------------------------------------------------------------------------

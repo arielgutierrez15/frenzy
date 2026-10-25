@@ -145,7 +145,7 @@ export interface FeeAccountStatus {
   address: string | null; owner: string | null; expected: string | null;
   state: 'ready' | 'missing' | 'problem' | 'unknown' | 'not_configured'; creatable?: boolean; balance?: string | null; detail: string; sharedWith?: string;
 }
-export interface FeeSetup { at: number; accounts: FeeAccountStatus[]; swapsReady: boolean; boostReady: boolean; missing: number; rentPerAccountSol?: number; testCopy?: boolean; note?: string }
+export interface FeeSetup { at: number; accounts: FeeAccountStatus[]; swapsReady: boolean; boostReady: boolean; missing: number; rentPerAccountSol?: number; rpc?: string | null; testCopy?: boolean; note?: string }
 export const adminFeeSetup = (token: string) => apiCall<FeeSetup>('/admin/fee-setup', { token, timeoutMs: 30_000 });
 export const adminFeeSetupBuild = (token: string) => apiCall<{ transaction: string; creates: { id: string; label: string; address: string; token: string }[]; costSol: number; note: string }>('/admin/fee-setup/build', { body: {}, token, timeoutMs: 30_000 });
 export const adminFeeSetupSubmit = (token: string, signedTransaction: string) => apiCall<{ signature: string; status: string }>('/admin/fee-setup/submit', { body: { signedTransaction }, token, timeoutMs: 30_000 });
