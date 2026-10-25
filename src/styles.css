@@ -381,12 +381,15 @@ textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
   .app { display: block; }
   .rail, .desk-bell { display: none; }
   .topbar {
-    display: flex; align-items: center; gap: 10px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
-    padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; align-items: center; gap: 8px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+    padding-block: 6px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
     background: color-mix(in srgb, var(--ink) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
+    transition: transform 0.25s ease; will-change: transform;
   }
-  .topbar .brand-mark { height: 28px; }
-  .topbar-cash { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 5px 10px; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+  .topbar.topbar-hidden { transform: translateY(calc(-100% - env(safe-area-inset-top, 0px) - 2px)); }
+  .topbar .brand-mark { height: 22px; }
+  .topbar .bell { width: 34px; height: 34px; border-radius: 10px; }
+  .topbar-cash { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 2px 8px; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; font-size: 0.86rem; }
   .main { padding-block: 16px 110px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .view-head, .coin-head { padding-right: 0; }
   h1 { font-size: 1.5rem; }
@@ -789,12 +792,13 @@ img.avatar-you { border-radius: 50%; object-fit: cover; padding: 0; }
 .srch-name { font-weight: 500; }
 .srch-note { margin: 6px 8px; }
 @media (max-width: 780px) {
-  .topbar { flex-wrap: wrap; row-gap: 10px; }
+  .topbar { flex-wrap: wrap; row-gap: 6px; }
   .topbar-search { display: block; flex: 1 0 100%; }
+  .topbar .srch-field { height: 36px; border-radius: 10px; }
   .srch-kbd { display: none; }
   .srch-panel { position: fixed; top: auto; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); margin-top: 8px; max-height: calc(100vh - 220px); max-height: calc(100dvh - 220px); }
-  .toasts { top: calc(118px + env(safe-area-inset-top, 0px)); }
-  .alerts-backdrop { padding-top: 116px; }
+  .toasts { top: calc(92px + env(safe-area-inset-top, 0px)); }
+  .alerts-backdrop { padding-top: 90px; }
 }
 
 /* ---- coin page (FOMO-style layout) ------------------------------------------------------------------------------ */
