@@ -29,7 +29,7 @@ import {
   unblockToken, userStats, vaultAdmin, setCard, adjustCoins, setRewards, auditLog, publicBlocklist,
 } from './controls.js';
 import { CHALLENGES } from './vault.js';
-import { feeSetupStatus, feeSetupBuild, feeSetupSubmit } from './feesetup.js';
+import { feeSetupStatus, feeSetupBuild, feeSetupSubmit, associatedTokenAddress, ATA_PROGRAM } from './feesetup.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -201,6 +201,34 @@ function readSwapInput(b) {
   return { taker, inputMint, outputMint, amount, slippageBps, feeMint, side };
 }
 
+/**
+ * Jupiter's setup / cleanup / other instructions run with the user's signature, so they are limited to the harmless
+ * kinds a swap needs: create the user's own token accounts, wrap SOL into the user's own wSOL account, sync it, close the
+ * user's account back to the user, and memos. Anything else (a token transfer or approval, a SOL transfer to another
+ * address, an unknown program) is refused, so a compromised or misbehaving API can't slip one in next to the swap.
+ */
+async function checkAuxInstructions(ixs, taker) {
+  const wsolAta = await associatedTokenAddress(taker, MINTS.wsol);
+  const k = (ix, i) => ix.accounts[i] && ix.accounts[i].pubkey;
+  for (const ix of ixs) {
+    const tag = ix.data.length ? ix.data[0] : -1;
+    let ok = false;
+    if (ix.programId === ATA_PROGRAM) ok = (tag === -1 || tag === 0 || tag === 1) && k(ix, 0) === taker && k(ix, 2) === taker;
+    else if (ix.programId === PROGRAMS.token || ix.programId === PROGRAMS.token2022) {
+      ok = tag === 17 // SyncNative
+        || ((tag === 1 || tag === 16 || tag === 18) && ix.accounts.every((a) => !a.isSigner || a.pubkey === taker)) // InitializeAccount*
+        || (tag === 9 && k(ix, 1) === taker && k(ix, 2) === taker); // CloseAccount back to the user
+    } else if (ix.programId === PROGRAMS.system) {
+      const kind = ix.data.length >= 4 ? new DataView(ix.data.buffer, ix.data.byteOffset, 4).getUint32(0, true) : -1;
+      ok = kind === 2 && k(ix, 0) === taker && k(ix, 1) === wsolAta; // wrap SOL into the user's own wSOL account
+    } else if (ix.programId === PROGRAMS.memo) ok = true;
+    if (!ok) {
+      const name = ix.programId === PROGRAMS.system ? 'System' : ix.programId === PROGRAMS.token || ix.programId === PROGRAMS.token2022 ? 'Token' : ix.programId === ATA_PROGRAM ? 'Associated Token' : ix.programId === PROGRAMS.computeBudget ? 'Compute Budget' : ix.programId.slice(0, 8) + '…';
+      throw new ApiError(502, `Jupiter's swap included an instruction BAGZ doesn't allow (${name} program, instruction ${tag}). Nothing was offered for signing.`);
+    }
+  }
+}
+
 async function buildSwap(ctx, inp, cfg, { simulate }) {
   if (cfg.feeBps === null) throw new ApiError(503, 'BAGZ_PLATFORM_FEE_BPS is not set to a valid fee. Swaps are refused rather than run without the fee.');
   const feeAccount = cfg.feeAccounts[inp.feeMint];
@@ -232,6 +260,7 @@ async function buildSwap(ctx, inp, cfg, { simulate }) {
     ...(j.otherInstructions || []).map(fromApiInstruction),
   ];
   for (const ix of body) if (ix.accounts.some((a) => a.isSigner && a.pubkey !== inp.taker)) throw new ApiError(502, 'Swap needs an unexpected signer');
+  await checkAuxInstructions(body.filter((ix) => ix !== swapIx), inp.taker);
   const lookupTables = await loadLookupTables(ctx, j.addressesByLookupTableAddress);
   const compile = (limit) => compileMessage({ payer: inp.taker, recentBlockhash: bh.blockhash, lookupTables, instructions: [setComputeUnitLimitIx(limit), ...(cuPrice > 0 ? [setComputeUnitPriceIx(cuPrice)] : []), ...body] });
 

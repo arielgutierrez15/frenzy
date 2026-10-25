@@ -80,7 +80,7 @@ check('found a coin to block', !!victimMint && victim.startsWith('$'), `${victim
 check('#admin opens the console with grouped navigation', await goAdmin(p));
 const labels = await p.locator('.admin-nav-label').allInnerTexts();
 check('nav groups: Insights · Controls · Records', labels.map((s: string) => s.toUpperCase()).join(',') === 'INSIGHTS,CONTROLS,RECORDS', labels.join(','));
-check('10 sections in the nav', (await p.locator('.admin-nav button').count()) === 10);
+check('11 sections in the nav', (await p.locator('.admin-nav button').count()) === 11);
 
 // overview (unchanged) still loads
 await section(p, 'Overview');

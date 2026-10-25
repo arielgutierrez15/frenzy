@@ -1,7 +1,8 @@
-// Browser test: runs the built app (docs/index.html) in Chromium against a MOCKED provider API and a FAKE chart library.
+// Browser test: runs the built app (built without a BAGZ server, so calls go direct) in Chromium against a MOCKED provider API and a FAKE chart library.
 // Mocks are test fixtures only (shapes taken from real responses recorded in src/snapshot.ts). Nothing here ships in the app.
 // Usage: node tests/browser.mjs   (PLAYWRIGHT=/path/to/playwright/index.mjs, SHOTS=/dir for screenshots)
 import { readFileSync, mkdirSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
@@ -9,7 +10,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { chromium } = await import(process.env.PLAYWRIGHT || '/opt/npm-tools/node_modules/playwright/index.mjs');
 const SHOTS = process.env.SHOTS || '/tmp/bagz-shots';
 mkdirSync(SHOTS, { recursive: true });
-const APP = 'file://' + resolve(root, 'docs/index.html');
+// the live page has the BAGZ server address built in; this suite tests the direct-from-browser mode, so it builds a copy
+// without one (BAGZ_PAGE_OUT builds leave the server address empty)
+const PAGE = resolve(SHOTS, 'bagz-direct.html');
+execFileSync('node', ['build.mjs'], { cwd: root, env: { ...process.env, BAGZ_PAGE_OUT: PAGE }, stdio: 'pipe' });
+const APP = 'file://' + PAGE;
 
 import { makeMock } from './mock-api.mjs';
 
