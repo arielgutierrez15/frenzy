@@ -232,7 +232,7 @@ export function FeeSetupPanel({ token, onAuthError, adminWallet }: P & { adminWa
         <div className="row gap-s wrap">
           <div className="grow">
             <h2 className="admin-h">Fee accounts</h2>
-            <p className="small muted">The accounts that receive the 0.50% swap fee and BOOST payments. They must exist on Solana before live swaps or BOOST payments are switched on. Checked {ago(data.at)} ago.</p>
+            <p className="small muted">The accounts that receive the 0.50% swap fee and BOOST payments. They must exist on Solana before live swaps or BOOST payments are switched on. Checked {ago(data.at)} ago{data.rpc ? ` via ${data.rpc}` : ''}.</p>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading || !!step}>{loading ? 'Checking…' : 'Check again'}</button>
         </div>

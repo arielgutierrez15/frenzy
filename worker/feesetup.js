@@ -15,7 +15,7 @@
  *    admin, and the signature verifies. Anything else is refused before reaching the network.
  *  - This does not turn on swaps or BOOST payments; those stay behind ENABLE_LIVE_SWAPS / ENABLE_LIVE_BOOST_PAYMENTS.
  */
-import { ApiError, database, config, isTestCopy, rpcUrl } from './api.js';
+import { ApiError, database, config, isTestCopy, rpcCandidates } from './api.js';
 import { auditAt } from './controls.js';
 import {
   MINTS, PROGRAMS, isPubkey, pk, b58encode, b64encode, b64decode, compileMessage, unsignedTransaction, parseTransaction, verifyEd25519,
@@ -72,15 +72,34 @@ export const createAtaIdempotentIx = ({ payer, ata, owner, mint, tokenProgram = 
 
 // ---- RPC ----------------------------------------------------------------------------------------------------------
 class RpcFail extends Error { constructor(m) { super(m); this.rpcRefused = true; } }
+const scrub = (m) => String(m || '').replace(/api-key=[^&\s]+/gi, 'api-key=…').replace(/https?:\/\/[^\s"']+/g, '<url>').slice(0, 120);
+/**
+ * Tries each RPC the Worker knows (SOLANA_RPC_URL, then Helius, then the public RPC) and uses the first that answers.
+ * A bad pasted URL or an over-limit provider therefore doesn't block this screen, and the error says which one failed.
+ * Only network failures and HTTP errors move on to the next one; an RPC-level answer (e.g. a rejected transaction) is final.
+ */
 async function rpc(ctx, method, params) {
   if (ctx.guard && ctx.guard('rpc')) throw new ApiError(429, 'The Solana RPC budget for this minute is used up. Try again shortly.', { retryAfter: 20 });
-  let res;
-  try { res = await ctx.fetch(rpcUrl(ctx.env), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), redirect: 'manual' }); }
-  catch { throw new ApiError(502, 'Solana RPC unreachable'); }
-  const j = await res.json().catch(() => null);
-  if (j && j.error) throw new RpcFail(String(j.error.message || 'RPC error').replace(/api-key=[^&\s]+/g, 'api-key=…').slice(0, 200));
-  if (!res.ok || !j) throw new ApiError(502, `Solana RPC answered ${res.status}`);
-  return j.result;
+  const fails = [];
+  for (const c of rpcCandidates(ctx.env)) {
+    if (c.url === 'invalid') { fails.push(`${c.label}: not a valid web address`); continue; }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10_000);
+    let res;
+    try { res = await ctx.fetch(c.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: ctrl.signal }); }
+    catch (e) { fails.push(`${c.label}: ${e && e.name === 'AbortError' ? 'timed out' : scrub(e && e.message) || 'unreachable'}`); continue; }
+    finally { clearTimeout(t); }
+    const j = await res.json().catch(() => null);
+    if (j && j.error) {
+      // a normal (200) RPC answer with an error is final (e.g. the network refusing a transaction); 401/403/429 try the next RPC
+      if (res.ok) throw new RpcFail(scrub(j.error.message || 'RPC error'));
+      fails.push(`${c.label}: ${scrub(j.error.message)}`); continue;
+    }
+    if (!res.ok || !j) { fails.push(`${c.label}: answered ${res.status}`); continue; }
+    ctx.rpcUsed = c.label;
+    return j.result;
+  }
+  throw new ApiError(502, `Solana RPC unreachable (${fails.join('; ') || 'no RPC configured'})`);
 }
 
 // ---- which accounts BAGZ needs ------------------------------------------------------------------------------------
@@ -104,7 +123,7 @@ async function inspect(ctx, a) {
   if (!a.configured) return { ...base, state: 'not_configured', detail: `Set the ${a.for === 'boost' ? 'BOOST wallet and account' : 'fee wallet and account'} in wrangler.toml` };
   let v;
   try { const r = await rpc(ctx, 'getAccountInfo', [a.address, { encoding: 'jsonParsed', commitment: 'confirmed' }]); v = r && r.value; }
-  catch (e) { return { ...base, state: 'unknown', detail: `Couldn’t check: ${String(e && e.message || 'RPC error').slice(0, 120)}` }; }
+  catch (e) { return { ...base, state: 'unknown', detail: `Couldn’t check: ${String(e && e.message || 'RPC error').slice(0, 400)}` }; }
   if (!v) {
     return a.standard
       ? { ...base, state: 'missing', creatable: true, detail: 'Not created yet. BAGZ can create it for you.' }
@@ -135,7 +154,7 @@ export async function feeSetupStatus(ctx) {
   const creatable = new Set(accounts.filter((a) => a.creatable).map((a) => a.address));
   return {
     at: ctx.now(), accounts, swapsReady: ok('swaps'), boostReady: ok('boost'), missing: creatable.size,
-    rentPerAccountSol: TOKEN_ACCOUNT_RENT / 1e9,
+    rentPerAccountSol: TOKEN_ACCOUNT_RENT / 1e9, rpc: ctx.rpcUsed || null,
   };
 }
 
