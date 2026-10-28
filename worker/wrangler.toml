@@ -18,6 +18,11 @@ RATE_POST_PER_MIN = "20"
 # per-provider upstream calls per minute (cache misses), e.g. UPSTREAM_PER_MIN_JUP = "50"
 # "demo" (default, 100 calls/min) or "pro" when COINGECKO_API_KEY is a paid key
 COINGECKO_PLAN = "demo"
+# Investigate (/v1/investigate, read-only) uses the same RPC secret as everything else (SOLANA_RPC_URL, else HELIUS_API_KEY).
+# Optional limits, defaults shown (uncomment to change): investigation requests per visitor IP per minute, and RPC calls
+# per minute this Worker instance may spend on investigations (cache misses only; also counted in the RPC budget).
+# RATE_INVESTIGATE_PER_MIN = "40"
+# UPSTREAM_PER_MIN_INVESTIGATE = "150"
 
 # ---- money switches: OFF until security and compliance reviews are complete -----------------------------------------
 ENABLE_LIVE_SWAPS = "false"

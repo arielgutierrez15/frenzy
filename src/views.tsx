@@ -26,6 +26,7 @@ import { setPromoteMint } from './boost/PromoteView';
 import { ConnectedWalletPanel } from './trading/ConnectedWallet';
 import { onSyncStatus, syncStatus } from './sync/walletSync';
 import { useSession } from './social/session';
+import { InvestigatePanel } from './investigate/InvestigatePanel';
 
 // ======================================================================
 // shared bits
@@ -423,6 +424,8 @@ export function CoinView({ id }: { id: string }) {
   const [allTrades, setAllTrades] = useState(false);
   const [info, setInfo] = useState<ChartInfo | null>(null);
   const holdersRef = useRef<HTMLElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const investigateRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setFocus(id);
@@ -511,7 +514,7 @@ export function CoinView({ id }: { id: string }) {
       </div>
       {c.rugged && <div className="banner banner-down"><Icon.warn /> {c.rugged === 'liquidity' ? 'Most of this pool’s liquidity was pulled while you were watching.' : 'Price fell more than 90% from its peak this session.'} Selling returns very little.</div>}
 
-      <div className="cv-chart">
+      <div className="cv-chart" ref={chartRef}>
         <ChartPanel c={c} entry={pos ? pos.cost / pos.qty : undefined} isMajor={isMajor} holders={c.holders} onHolders={() => holdersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} onInfo={setInfo} />
       </div>
 
@@ -629,9 +632,14 @@ export function CoinView({ id }: { id: string }) {
                   </li>
                 ))}
               </ol>
+              <button className="link small" onClick={() => investigateRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>These are token accounts. See owners and transfers in Investigate ↓</button>
             </>
           )}
       </section>
+
+      <div ref={investigateRef}>
+        <InvestigatePanel c={c} onShowChart={() => chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+      </div>
 
       {c.chain === 'solana' && (
         <section className="cv-sec">
