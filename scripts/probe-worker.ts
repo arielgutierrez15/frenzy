@@ -10,6 +10,7 @@
  */
 import { parseDexPairs, parseDexProfiles, parseGtPools, parseGtTrades, parseJupiterPrice, parseJupiterTokens, parseOhlcv, parsePumpCoins, parseRpc, parseRugSummary, poolHasBase } from '../src/providers/adapters';
 import { parseOrder } from '../src/trading/jupiter';
+import { validateHolders, validateActivity } from '../src/investigate/validate';
 
 const args = process.argv.slice(2);
 const base = (args.find((a) => /^https?:\/\//.test(a)) || '').replace(/\/$/, '');
@@ -133,6 +134,39 @@ const lb = await call('/v1/leaderboard');
 log({ name: 'leaderboard (accounts tables migrated)', result: lb.status === 200 ? 'PASS' : 'FAIL', detail: `HTTP ${lb.status}${lb.status !== 200 ? ' — run worker/migrations/0002_social.sql' : ''}` });
 const active = await call('/v1/boost/active');
 log({ name: 'BOOST active list (D1 query)', result: active.status === 200 ? 'PASS' : 'FAIL', detail: `HTTP ${active.status} · ${(active.json as any)?.campaigns?.length ?? '?'} live campaigns` });
+
+// ---- 6. Investigate (/v1/investigate): read-only research, real Solana RPC through the Worker's secret. Never signs or sends.
+// "configured" in health only means a key is set; the holder request below is what proves the key and plan work.
+const ih = await call('/v1/investigate/health');
+const ihj: any = ih.json;
+if (ih.status === 404) log({ name: 'investigate routes deployed', result: 'FAIL', detail: 'HTTP 404: this Worker does not have /v1/investigate yet' });
+else log({ name: 'investigate health', result: ih.status === 200 && ihj?.configured ? 'PASS' : 'FAIL', detail: ih.status === 200 ? `provider ${ihj.provider} · configured=${ihj.configured} (not proof the key works)` : `HTTP ${ih.status} ${ihj?.error || ''}` });
+if (ih.status === 200 && ihj?.configured) {
+  const hold = await call(`/v1/investigate/holders?mint=${BONK}`);
+  if (hold.status !== 200) log({ name: 'investigate holders (BONK, real RPC)', result: 'FAIL', detail: `HTTP ${hold.status} ${(hold.json as any)?.code || ''} ${(hold.json as any)?.error || ''}` });
+  else {
+    try {
+      const d = validateHolders(hold.json, BONK);
+      log({ name: 'investigate holders (BONK, real RPC)', result: d.holders.length > 0 ? 'PASS' : 'WARN', detail: `${d.holders.length} owners from ${d.coverage.tokenAccountsReturned} token accounts · ${d.coverage.includedPercent ?? '?'}% of supply · slots ${d.slots.ranking}/${d.slots.accounts} · ${d.consistency.changedAccounts} changed · ${hold.ms} ms` });
+      const again = await call(`/v1/investigate/holders?mint=${BONK}`);
+      log({ name: 'investigate holders cached on the second call', result: (again.json as any)?.cache?.hit ? 'PASS' : 'WARN', detail: `cache ${JSON.stringify((again.json as any)?.cache)}` });
+      const acct = d.holders[0]?.accounts[0]?.address;
+      if (acct) {
+        const act = await call(`/v1/investigate/activity?mint=${BONK}&account=${acct}`);
+        if (act.status !== 200) log({ name: 'investigate activity (largest BONK account)', result: 'FAIL', detail: `HTTP ${act.status} ${(act.json as any)?.code || ''} ${(act.json as any)?.error || ''}` });
+        else {
+          const a = validateActivity(act.json, BONK, acct);
+          log({ name: 'investigate activity (largest BONK account)', result: 'PASS', detail: `${a.transfers.length} events from ${a.coverage.successfulSignatures}/${a.coverage.signaturesReturned} successful signatures · complete=${a.coverage.complete} · ${act.ms} ms` });
+          if (!a.coverage.complete) log({ name: 'investigate activity coverage', result: 'WARN', detail: `missing bodies ${a.coverage.missingTransactionBodies}, fetch errors ${a.coverage.transactionFetchErrors}, halted ${a.coverage.haltedBy}` });
+        }
+      }
+    } catch (e: any) { log({ name: 'investigate holders (BONK, real RPC)', result: 'FAIL', detail: `answer not usable by the app: ${e?.message || e}` }); }
+  }
+  const bad = await call('/v1/investigate/holders?mint=not-a-mint');
+  log({ name: 'investigate rejects an invalid mint', result: bad.status === 400 ? 'PASS' : 'FAIL', detail: `HTTP ${bad.status}` });
+  const evilInv = await fetch(base + `/v1/investigate/holders?mint=${BONK}`, { headers: { origin: 'https://evil.example' } });
+  log({ name: 'investigate refuses other websites', result: evilInv.status === 403 ? 'PASS' : 'FAIL', detail: `HTTP ${evilInv.status}` });
+}
 
 finish();
 

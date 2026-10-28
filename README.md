@@ -23,6 +23,8 @@ Brand: black `#090909`, hot pink `#FF008C`, white. Green/red are used only for p
 | Live swaps / BOOST payments on mainnet | **Not run. Switched off** (`ENABLE_LIVE_SWAPS`, `ENABLE_LIVE_BOOST_PAYMENTS`, `BAGZ_LIVE_TRADING`). Never executed against Jupiter or Solana for real |
 | Jupiter `/build` real responses, Phantom/Solflare/Backpack real apps | **Not tested.** No network access to them from the build sandbox; the fake follows the documented schema |
 | pump.fun feeds | Unofficial; may not work at all |
+| Investigate (token page): holder snapshot, owner grouping, transfer feed, evidence lines, pool tx counts — see `INVESTIGATE.md` | **Passed** 33 unit/route tests (`tests/investigate-*.test.ts`, scripted RPC) and 45 browser checks (`npm run test:investigate`, real Worker code, desktop + phone) |
+| Investigate against the real Helius RPC on the deployed Worker | **Not tested.** Run the probe after deploying; its Investigate section makes a real holder request |
 
 ## Data sources (checked against vendor docs, 18 Oct 2026)
 
@@ -184,4 +186,5 @@ A value from one provider is only combined with another's when they describe the
 - The chart pool and the quoted price (DexScreener's best pair) can differ; the chart warns above 3%.
 - pump.fun livestream status is unavailable without a working pump.fun feed.
 - Holder lists use the public Solana RPC and often hit its limits.
+- Investigate reads only the token's 20 largest token accounts and 10 signatures per page for one selected account; it is a bounded sample, not a full history or a complete wallet ranking (`INVESTIGATE.md`).
 - Paper trades are simulations; they never touch a wallet.

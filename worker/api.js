@@ -30,6 +30,7 @@ import {
 } from './controls.js';
 import { CHALLENGES } from './vault.js';
 import { feeSetupStatus, feeSetupBuild, feeSetupSubmit, associatedTokenAddress, ATA_PROGRAM } from './feesetup.js';
+import { investigate } from './investigate.js';
 
 export const PACKAGES = {
   starter: { label: 'Starter', usdc: 10, hours: 12, rank: 1 },
@@ -785,6 +786,9 @@ export async function api(request, env, deps) {
   }
   const route = (m, re) => method === m && re.exec(path);
   let p;
+  // read-only token research (/v1/investigate/…); runs behind the same origin checks and rate limits as every /v1 route
+  const inv = await investigate(ctx, request, path, url);
+  if (inv !== undefined) return inv;
   const s = await social(ctx, request, path, body, url);
   if (s !== undefined) return s;
   const v = await vault(ctx, request, path, body);
